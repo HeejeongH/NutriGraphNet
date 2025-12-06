@@ -1,0 +1,48 @@
+# Python
+__pycache__/
+*.py[cod]
+*.so
+*.egg-info/
+.pytest_cache/
+venv/
+*.egg
+
+# Jupyter
+.ipynb_checkpoints/
+
+# 환경
+.env
+.venv/
+env/
+
+# 모델 & 결과
+*.pth
+*.h5
+*.pkl
+*.pickle
+checkpoints/
+results/
+logs/
+*.log
+
+# 데이터
+data/raw/
+data/processed/
+data/HN/
+*.csv
+*.zip
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# 기타
+.cache/
+create_test_data.py
+prepare_data_simple.py

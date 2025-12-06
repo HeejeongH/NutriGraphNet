@@ -32,6 +32,8 @@ from health_score_calculator import (
     PersonalizedHealthScoreCalculator,
     precompute_health_scores_for_dataset
 )
+# For pickle compatibility
+from simple_hetero_data import SimpleHeteroData, SimpleEdgeData
 
 
 def load_data(data_path):
@@ -242,8 +244,24 @@ def main(args):
         device=device
     ).to(device)
     
-    num_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
-    print(f"   Total parameters: {num_params:,}")
+    # Initialize lazy modules with dummy forward pass
+    print("   Initializing model parameters...")
+    try:
+        with torch.no_grad():
+            # Dummy forward pass to initialize LazyLinear
+            dummy_edge_index = train_data['edge_index'][:, :10].to(device)
+            _ = model(
+                {k: v.to(device) for k, v in data.x_dict.items()},
+                {k: v.to(device) for k, v in data.edge_index_dict.items()},
+                dummy_edge_index,
+                training=False
+            )
+        
+        num_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
+        print(f"   Total parameters: {num_params:,}")
+    except Exception as e:
+        print(f"   Warning: Could not compute parameter count: {e}")
+        print(f"   Continuing with training...")
     
     # Loss function
     criterion = AdaptiveDualObjectiveLoss(
