@@ -210,12 +210,17 @@ python src/compare_health_results.py
    • NutriGraphNet V2 - Health Loss Only
 ```
 
-### 6. 개별 모델 실험 (Optional)
+### 6. 개별 모델 단일 실험
 
 ```bash
-# 다양한 실험 (기본)
-bash run_all_experiments.sh
-python compare_results.py
+# 단일 모델 테스트
+python train_v2.py \
+  --data_path data/processed_data/processed_data_GNN_fixed.pkl \
+  --model graphsage \
+  --loss focal \
+  --epochs 50 \
+  --hidden_channels 128 \
+  --out_channels 64
 ```
 
 ## 📊 Performance
@@ -253,10 +258,8 @@ NutriGraphNet/
 │   ├── training_utils.py            # Training utilities
 │   ├── HealthAwareGNN.py            # Original model
 │   └── train_v2.py                  # Training module
-├── train_v2.py                      # Main training script (root)
-├── run_health_experiments.sh        # Auto-generated experiment script
-├── run_all_experiments.sh           # Legacy batch experiments
-├── compare_results.py               # Legacy comparison
+├── train_v2.py                      # ⭐ Main training script (entry point)
+├── run_health_experiments.sh        # ⭐ Auto-generated experiment script
 ├── results/
 │   └── health_experiments/          # ⭐ Health-aware experiment results
 ├── etc/
