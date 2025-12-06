@@ -304,7 +304,12 @@ def main():
         ]
     }
     
-    with open('results/health_experiments/experiment_summary.json', 'w') as f:
+    # 디렉토리 생성
+    summary_dir = Path('results/health_experiments')
+    summary_dir.mkdir(parents=True, exist_ok=True)
+    
+    summary_file = summary_dir / 'experiment_summary.json'
+    with open(summary_file, 'w') as f:
         json.dump(summary, f, indent=2)
     
     print(f"\n📄 Experiment summary saved: results/health_experiments/experiment_summary.json")
