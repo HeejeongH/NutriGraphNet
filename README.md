@@ -69,37 +69,83 @@ python train_v2.py --epochs 50 --hidden_channels 256
 
 ## 🚀 Usage
 
-### Basic Training
+### 1. 환경 설정
 
 ```bash
-# Quick test (30 epochs, small model)
-python train_v2.py \
-    --hidden_channels 128 \
-    --out_channels 64 \
-    --num_layers 2 \
-    --epochs 30
+# 필수 패키지 설치
+pip install -r requirements.txt
+
+# 데이터 확인
+ls -lh data/processed_data/*.pkl
 ```
 
-### Full Training
+### 2. 기본 모델 훈련
 
 ```bash
-# Full V2 model with all features
+# Vanilla GNN (baseline)
 python train_v2.py \
-    --hidden_channels 256 \
-    --out_channels 128 \
-    --num_layers 3 \
-    --epochs 100 \
-    --lambda_health_init 0.01 \
-    --lambda_health_max 0.1 \
-    --focal_gamma 2.0
+  --data_path data/processed_data/processed_data_GNN_cpu.pkl \
+  --model vanilla \
+  --epochs 50 \
+  --hidden_channels 128 \
+  --out_channels 64
+
+# GraphSAGE
+python train_v2.py \
+  --model graphsage \
+  --epochs 50
+
+# GAT (Graph Attention Network)
+python train_v2.py \
+  --model gat \
+  --epochs 50
 ```
 
-### Batch Experiments
+### 3. Health-Aware 모델 훈련
 
 ```bash
-# Run multiple experiments automatically
-chmod +x run_experiment.sh
-./run_experiment.sh
+# NutriGraphNet V2 (개선된 버전)
+python train_v2.py \
+  --model nutrigraphnet_v2 \
+  --loss adaptive \
+  --epochs 100 \
+  --hidden_channels 256 \
+  --out_channels 128 \
+  --lambda_health_init 0.01 \
+  --lambda_health_max 0.1
+
+# Health-aware GNN with health loss
+python train_v2.py \
+  --model health_gnn \
+  --loss health \
+  --health_lambda 0.1 \
+  --epochs 100
+```
+
+### 4. 다양한 Loss Function 실험
+
+```bash
+# Standard BCE Loss
+python train_v2.py --loss standard
+
+# Focal Loss (for imbalanced data)
+python train_v2.py --loss focal
+
+# Health-aware Loss
+python train_v2.py --loss health --health_lambda 0.1
+
+# Adaptive Health Loss (점진적 건강 고려)
+python train_v2.py --loss adaptive --lambda_health_init 0.01 --lambda_health_max 0.1
+```
+
+### 5. 배치 실험 (Batch Experiments)
+
+```bash
+# 모든 실험 실행
+bash run_all_experiments.sh
+
+# 결과 비교
+python compare_results.py
 ```
 
 ## 📊 Performance
