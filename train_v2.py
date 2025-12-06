@@ -713,7 +713,12 @@ def main(args):
         'args': vars(args)
     }
     
-    results_path = args.save_path.replace('.pth', '_results.json')
+    results_path = args.result_file
+    
+    # 디렉토리가 없으면 생성
+    results_dir = Path(results_path).parent
+    results_dir.mkdir(parents=True, exist_ok=True)
+    
     with open(results_path, 'w') as f:
         json.dump(results, f, indent=2)
     
@@ -769,6 +774,8 @@ if __name__ == '__main__':
     # Misc
     parser.add_argument('--save_path', type=str, default='best_model.pth',
                        help='Model save path')
+    parser.add_argument('--result_file', type=str, default='best_model_results.json',
+                       help='Result JSON file path')
     parser.add_argument('--print_every', type=int, default=5,
                        help='Print every N epochs')
     
