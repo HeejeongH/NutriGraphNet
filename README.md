@@ -174,13 +174,47 @@ python train_v2.py \
   --lambda_health_max 0.1
 ```
 
-### 5. 배치 실험 (Batch Experiments)
+### 5. Health-aware 비교 실험 (핵심! ⭐)
 
 ```bash
-# 모든 실험 실행
-bash run_all_experiments.sh
+# ⭐ 연구 목적: Baseline vs Health-aware 비교
 
-# 결과 비교
+# 1단계: 실험 스크립트 생성
+python run_health_aware_experiments.py --epochs 50
+
+# 2단계: 모든 실험 실행 (약 3-5시간 소요)
+bash run_health_experiments.sh
+
+# 3단계: 결과 비교 및 시각화
+python compare_health_results.py
+
+# 생성되는 결과물:
+# - results/health_experiments/preference_metrics_comparison.png
+# - results/health_experiments/health_metrics_comparison.png
+# - results/health_experiments/radar_comparison.png
+# - results/health_experiments/experiment_report.txt
+```
+
+**실험 구성:**
+```
+📊 Baseline Models (선호도만)
+   • Vanilla GNN
+   • GraphSAGE
+
+💚 Health-aware Models (선호도 + 건강도)
+   • GraphSAGE + Health Loss
+   • NutriGraphNet V2 (Full)
+
+🔬 Ablation Studies
+   • NutriGraphNet V2 - Health Attention Only
+   • NutriGraphNet V2 - Health Loss Only
+```
+
+### 6. 개별 모델 실험 (Optional)
+
+```bash
+# 다양한 실험 (기본)
+bash run_all_experiments.sh
 python compare_results.py
 ```
 
@@ -211,14 +245,20 @@ NutriGraphNet/
 │       ├── processed_data_GNN_fixed.pkl  # ✅ Fixed data (USE THIS!)
 │       └── processed_data_GNN_cpu.pkl    # ⚠️ Old data (has issues)
 ├── src/
-│   ├── NutriGraphNet_v2.py          # Main model implementation
-│   ├── health_score_calculator.py   # ⭐ Personalized health scoring
+│   ├── NutriGraphNet_v2.py          # ⭐ Health-aware GNN model
+│   ├── health_score_calculator.py   # ⭐ Personalized health scoring (EER)
 │   ├── training_utils.py            # Training utilities
 │   ├── HealthAwareGNN.py            # Original model
 │   └── simple_hetero_data.py        # Data structure
-├── train_v2.py                      # ⭐ Main training script
-├── run_all_experiments.sh           # Batch experiment runner
-├── compare_results.py               # Result comparison tool
+├── train_v2.py                      # Main training script
+├── evaluation_metrics.py            # ⭐ Health-aware evaluation metrics
+├── run_health_aware_experiments.py  # ⭐ Comparative experiment generator
+├── compare_health_results.py        # ⭐ Health-aware result comparison
+├── run_health_experiments.sh        # Auto-generated experiment script
+├── run_all_experiments.sh           # Legacy batch experiments
+├── compare_results.py               # Legacy comparison
+├── results/
+│   └── health_experiments/          # ⭐ Health-aware experiment results
 ├── etc/
 │   └── old_data_scripts/            # Backup of old scripts
 ├── requirements.txt                 # Dependencies
@@ -226,6 +266,50 @@ NutriGraphNet/
 ```
 
 ## 🔬 Research
+
+### 🎯 Research Objective
+
+이 연구의 **핵심 목표**는 단순한 선호도 예측을 넘어 **건강도를 고려한 추천**이 가능한지 검증하는 것입니다:
+
+1. **Baseline Models** (선호도만): Vanilla GNN, GraphSAGE
+2. **Health-aware Models** (선호도 + 건강도): 
+   - Health Attention Mechanism
+   - Health-aware Loss Function
+   - 개인화된 건강 점수 (EER 기반)
+
+### 📊 Evaluation Metrics
+
+#### 1. 선호도 예측 메트릭
+- F1 Score, AUC, Precision, Recall
+
+#### 2. 건강도 고려 메트릭 (핵심!)
+- **Average Health Score**: 추천 음식의 평균 건강 점수
+- **Health Precision**: 건강식 추천 정밀도
+- **Health-aware Recall**: 건강한 음식 추천 재현율
+- **Health Improvement**: 기존 선호 대비 건강도 향상
+
+#### 3. 균형 메트릭
+- **Health-aware F1**: 선호도와 건강도의 조화 평균
+- **Top-K Health**: 상위 K개 추천의 건강도
+- **NDCG@K**: 건강도 기반 랭킹 품질
+
+### 📈 Comparative Experiments
+
+```bash
+# 1. 실험 스크립트 생성
+python run_health_aware_experiments.py --epochs 50
+
+# 2. 모든 실험 실행 (6개 모델)
+bash run_health_experiments.sh
+
+# 3. 결과 비교 및 시각화
+python compare_health_results.py
+```
+
+**실험 세트:**
+- **Baseline**: Vanilla GNN, GraphSAGE (선호도만)
+- **Health-aware**: GraphSAGE + Health Loss, NutriGraphNet V2
+- **Ablation**: Health Attention Only, Health Loss Only
 
 ### Publications
 
