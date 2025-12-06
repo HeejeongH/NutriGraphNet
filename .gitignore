@@ -18,8 +18,8 @@ env/
 # 모델 & 결과
 *.pth
 *.h5
-*.pkl
-*.pickle
+#*.pkl
+#*.pickle
 checkpoints/
 results/
 logs/
@@ -27,7 +27,7 @@ logs/
 
 # 데이터
 data/raw/
-data/processed/
+#data/processed/
 data/HN/
 *.csv
 *.zip
