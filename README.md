@@ -69,6 +69,20 @@ python train_v2.py --epochs 50 --hidden_channels 256
 
 ## 🚀 Usage
 
+### ✅ 실행 전 검증 (권장!)
+
+```bash
+# 전체 파이프라인 검증
+python src/check_pipeline.py
+
+# 검증 항목:
+# 1. 필수 파일 존재 확인
+# 2. train_v2.py 인자 확인
+# 3. 실험 스크립트 명령어 확인
+# 4. Python 모듈 import 테스트
+# 5. 디렉토리 생성 테스트
+```
+
 ### ⚠️ Important: Data Update (2024-12-06)
 
 **기존 데이터 문제점 수정 완료:**
