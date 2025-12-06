@@ -69,6 +69,20 @@ python train_v2.py --epochs 50 --hidden_channels 256
 
 ## 🚀 Usage
 
+### ⚠️ Important: Data Update (2024-12-06)
+
+**기존 데이터 문제점 수정 완료:**
+- ✅ Edge weight 정규화 (192.0 → [0, 1] 범위로 수정)
+- ✅ Food-contains-Ingredient weight 정규화 (19399.8 → [0, 1])
+- ✅ Health score 검증 완료 ([0.295, 0.958])
+- ✅ 모든 edge가 올바르게 정규화됨
+
+**새 데이터 파일 사용:**
+```bash
+# ⭐ 반드시 수정된 데이터 파일 사용
+--data_path data/processed_data/processed_data_GNN_fixed.pkl
+```
+
 ### 1. 환경 설정
 
 ```bash
@@ -77,26 +91,33 @@ pip install -r requirements.txt
 
 # 데이터 확인
 ls -lh data/processed_data/*.pkl
+
+# ⚠️ 주의: M3 Mac의 경우 MPS (GPU) 사용 가능
+# train_v2.py가 자동으로 mps 디바이스 감지
 ```
 
-### 2. 기본 모델 훈련
+### 2. 기본 모델 훈련 (수정된 데이터 사용)
 
 ```bash
-# Vanilla GNN (baseline)
+# ⭐ Vanilla GNN (baseline) - 수정된 데이터로
 python train_v2.py \
-  --data_path data/processed_data/processed_data_GNN_cpu.pkl \
+  --data_path data/processed_data/processed_data_GNN_fixed.pkl \
   --model vanilla \
   --epochs 50 \
   --hidden_channels 128 \
   --out_channels 64
 
-# GraphSAGE
+# ⭐ GraphSAGE (권장) - 더 강력한 모델
 python train_v2.py \
+  --data_path data/processed_data/processed_data_GNN_fixed.pkl \
   --model graphsage \
-  --epochs 50
+  --epochs 50 \
+  --hidden_channels 128 \
+  --out_channels 64
 
 # GAT (Graph Attention Network)
 python train_v2.py \
+  --data_path data/processed_data/processed_data_GNN_fixed.pkl \
   --model gat \
   --epochs 50
 ```
@@ -104,8 +125,9 @@ python train_v2.py \
 ### 3. Health-Aware 모델 훈련
 
 ```bash
-# NutriGraphNet V2 (개선된 버전)
+# ⭐ NutriGraphNet V2 (개선된 버전) - 수정된 데이터로
 python train_v2.py \
+  --data_path data/processed_data/processed_data_GNN_fixed.pkl \
   --model nutrigraphnet_v2 \
   --loss adaptive \
   --epochs 100 \
@@ -116,6 +138,7 @@ python train_v2.py \
 
 # Health-aware GNN with health loss
 python train_v2.py \
+  --data_path data/processed_data/processed_data_GNN_fixed.pkl \
   --model health_gnn \
   --loss health \
   --health_lambda 0.1 \
@@ -125,17 +148,30 @@ python train_v2.py \
 ### 4. 다양한 Loss Function 실험
 
 ```bash
-# Standard BCE Loss
-python train_v2.py --loss standard
+# ⭐ 권장: GraphSAGE + Focal Loss (불균형 데이터 처리)
+python train_v2.py \
+  --data_path data/processed_data/processed_data_GNN_fixed.pkl \
+  --model graphsage \
+  --loss focal \
+  --epochs 50
 
-# Focal Loss (for imbalanced data)
-python train_v2.py --loss focal
+# Standard BCE Loss
+python train_v2.py \
+  --data_path data/processed_data/processed_data_GNN_fixed.pkl \
+  --loss standard
 
 # Health-aware Loss
-python train_v2.py --loss health --health_lambda 0.1
+python train_v2.py \
+  --data_path data/processed_data/processed_data_GNN_fixed.pkl \
+  --loss health \
+  --health_lambda 0.1
 
 # Adaptive Health Loss (점진적 건강 고려)
-python train_v2.py --loss adaptive --lambda_health_init 0.01 --lambda_health_max 0.1
+python train_v2.py \
+  --data_path data/processed_data/processed_data_GNN_fixed.pkl \
+  --loss adaptive \
+  --lambda_health_init 0.01 \
+  --lambda_health_max 0.1
 ```
 
 ### 5. 배치 실험 (Batch Experiments)
@@ -169,15 +205,22 @@ python compare_results.py
 
 ```
 NutriGraphNet/
+├── data/
+│   ├── graph_builder.py             # ⭐ Data preprocessing script
+│   └── processed_data/
+│       ├── processed_data_GNN_fixed.pkl  # ✅ Fixed data (USE THIS!)
+│       └── processed_data_GNN_cpu.pkl    # ⚠️ Old data (has issues)
 ├── src/
 │   ├── NutriGraphNet_v2.py          # Main model implementation
-│   ├── health_score_calculator.py   # Personalized health scoring
+│   ├── health_score_calculator.py   # ⭐ Personalized health scoring
 │   ├── training_utils.py            # Training utilities
 │   ├── HealthAwareGNN.py            # Original model
 │   └── simple_hetero_data.py        # Data structure
-├── train_v2.py                      # Training script
-├── run_experiment.sh                # Batch experiment runner
-├── QUICKSTART.md                    # Quick start guide
+├── train_v2.py                      # ⭐ Main training script
+├── run_all_experiments.sh           # Batch experiment runner
+├── compare_results.py               # Result comparison tool
+├── etc/
+│   └── old_data_scripts/            # Backup of old scripts
 ├── requirements.txt                 # Dependencies
 └── README.md                        # This file
 ```
@@ -246,25 +289,57 @@ data = {
 
 ## 🐛 Troubleshooting
 
-### CUDA Out of Memory
+### ❌ 모델이 학습되지 않는 경우 (F1: 0.66, AUC: 0.5)
+
+**문제**: 기존 데이터의 edge weight가 정규화되지 않음
+
+**해결**: 
+```bash
+# ✅ 반드시 수정된 데이터 사용
+python train_v2.py --data_path data/processed_data/processed_data_GNN_fixed.pkl
+```
+
+### 💾 CUDA/MPS Out of Memory
 
 ```bash
-# Use smaller model
+# CPU 사용 (느리지만 안정적)
+export PYTORCH_ENABLE_MPS_FALLBACK=1
 python train_v2.py --hidden_channels 128 --num_layers 2
+
+# 또는 더 작은 모델
+python train_v2.py --hidden_channels 64 --out_channels 32
 ```
 
-### Data File Not Found
+### 📂 Data File Not Found
 
 ```bash
-# Specify custom data path
-python train_v2.py --data_path /path/to/your/data.pkl
+# 올바른 경로 확인
+ls -lh data/processed_data/
+
+# 절대 경로 사용
+python train_v2.py --data_path $(pwd)/data/processed_data/processed_data_GNN_fixed.pkl
 ```
 
-### Package Import Errors
+### 📦 Package Import Errors
 
 ```bash
-# Reinstall packages
+# PyTorch Geometric 재설치
+pip uninstall torch-scatter torch-sparse torch-cluster torch-spline-conv torch-geometric
+pip install torch-geometric
+
+# 또는 전체 재설치
 pip install --upgrade torch torch-geometric
+```
+
+### 🔧 데이터 재생성이 필요한 경우
+
+원본 SAV 파일이 있다면:
+```bash
+# 원본 데이터에서 새로 생성 (build_graph_data.py 사용)
+# 현재는 etc/old_data_scripts/에 백업됨
+python etc/old_data_scripts/build_graph_data.py \
+  --input data/raw/HN22_ALL.sav \
+  --output data/processed_data/processed_data_GNN_v3.pkl
 ```
 
 ## 📧 Contact

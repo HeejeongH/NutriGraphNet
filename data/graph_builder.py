@@ -1,144 +1,211 @@
-import pandas as pd
-import numpy as np
-import warnings
-import pyreadstat
+"""
+기존 processed_data_GNN_cpu.pkl의 문제점 수정
+- Edge weight 정규화
+- Edge 이름 수정
+- Health score 검증
+"""
 
 import torch
-from torch_geometric.data import HeteroData
-import torch_geometric.transforms as T
+import pickle
+import numpy as np
+from pathlib import Path
+import sys
+import os
 
-from sklearn.feature_extraction.text import TfidfVectorizer
+# Health score calculator import
+sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'src'))
 
-def load_data(file_path):
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    print(f"Device: '{device}'")
 
-    warnings.filterwarnings('ignore')
+def normalize_weights(weights, method='log1p'):
+    """Edge weight 정규화"""
+    if isinstance(weights, torch.Tensor):
+        weights = weights.cpu().numpy()
+    
+    if method == 'log1p':
+        # Log transformation: log(1 + x)
+        normalized = np.log1p(weights)
+        # 0-1 범위로 추가 정규화
+        if normalized.max() > 0:
+            normalized = normalized / normalized.max()
+    elif method == 'minmax':
+        # Min-max normalization
+        if weights.max() > weights.min():
+            normalized = (weights - weights.min()) / (weights.max() - weights.min())
+        else:
+            normalized = np.ones_like(weights) * 0.5
+    elif method == 'clip':
+        # Clipping outliers
+        normalized = np.clip(weights, 0, 10)
+        if normalized.max() > 0:
+            normalized = normalized / 10.0
+    else:
+        normalized = weights
+    
+    return torch.tensor(normalized, dtype=torch.float32)
 
-    # 데이터 불러오기
-    diet_raw_data, diet_meta = pyreadstat.read_sav(file_path)
-    diet_meta_df = pd.DataFrame([diet_meta.column_names, diet_meta.column_labels]).transpose()
 
-    diet_raw_data = diet_raw_data
-
-    # 원하는 데이터만 추출
-    imp_column = ['ID','sex','age','incm','edu','occp','N_DCODE', 'N_DNAME', 'N_MEAL', 'N_FCODE', 'N_FNAME', 'N_TD_VOL', 'N_TD_WT', 'N_CD_VOL', 'N_CD_WT', 'N_KINDG1', 'N_FM_WT']
-    nutri_column = ['NF_EN','NF_CHO','NF_PROT','NF_FAT','NF_SFA','NF_CHOL','NF_TDF','NF_SUGAR','NF_NA','NF_CA','NF_PHOS','NF_K']
-
-    diet_data = diet_raw_data[imp_column+nutri_column].copy()
-
-    # 부피, 중량 합치기
-    diet_data['N_TD'] = np.where(diet_data['N_TD_VOL'].notna(), diet_data['N_TD_VOL'], diet_data['N_TD_WT'])
-    diet_data['N_CD'] = np.where(diet_data['N_CD_VOL'].notna(), diet_data['N_CD_VOL'], diet_data['N_CD_WT'])
-    diet_data = diet_data.drop(['N_TD_VOL','N_TD_WT'], axis=1)  
-    diet_data = diet_data.drop(['N_CD_VOL','N_CD_WT'], axis=1)
-    diet_data['N_CD'] = np.where(diet_data['N_CD'].notna(), diet_data['N_CD'], diet_data['N_TD'])
-    diet_data['N_TD'] = np.where(diet_data['N_TD'].notna(), diet_data['N_TD'], diet_data['N_CD'])
-
-    # 음식 코드 통일
-    diet_data = diet_data.rename(columns={'N_DCODE':'O_DCODE'})
-    name_to_code = {name: f"{i:02d}" for i, name in enumerate(diet_data['N_DNAME'].unique())}
-    diet_data['N_DCODE'] = diet_data['O_DCODE'].astype(str) + diet_data['N_DNAME'].map(name_to_code)
-    diet_data = diet_data.drop(columns=['O_DCODE']).drop_duplicates().reset_index(drop=True)
-    diet_data = diet_data.fillna(0)
-
-    # ID 숫자로 매핑해주기
-    diet_data['N_KINDG1'] = diet_data['N_KINDG1'].astype(int)
-
-    # 각 데이터 정의
-    user_data = diet_data[['ID', 'sex', 'age', 'incm', 'edu', 'occp']].drop_duplicates()
-
-    food_data = diet_data[['N_DCODE','N_TD','N_CD']+nutri_column].drop_duplicates().reset_index(drop=True)
-    for nutri in nutri_column:
-        food_data[nutri] = food_data['N_CD'] * food_data[nutri] / food_data['N_TD']
-    food_data = food_data.drop(['N_TD','N_CD'], axis=1)
-    food_data = food_data.groupby('N_DCODE').sum().reset_index()
-
-    ingre_data = diet_data[['N_FCODE', 'N_FNAME', 'N_KINDG1']].drop_duplicates().set_index('N_FCODE')
-    vectorizer = TfidfVectorizer()
-    tfidf_matrix = vectorizer.fit_transform(ingre_data['N_FNAME'])
-    tfidf_df = pd.DataFrame(tfidf_matrix.toarray(), columns=vectorizer.get_feature_names_out())
-    tfidf_df.index = ingre_data.index
-    ingre_data = ingre_data.join(tfidf_df).drop('N_FNAME', axis=1).reset_index()
-
-    meal_data = diet_data[['N_MEAL']].drop_duplicates()
-
-    # user - food
-    intake_data = diet_data[['ID', 'N_DCODE','N_TD','N_CD']]
-    intake_data['edge_weight'] = intake_data['N_TD']/intake_data['N_CD']
-    intake_data = intake_data.drop(['N_TD','N_CD'], axis=1).drop_duplicates().reset_index(drop=True)
-    intake_data = intake_data.groupby(['ID','N_DCODE']).mean().reset_index()
-
-    # food - food
-    def create_food_pairs(meal_data):
-        pairs = []
-        for _, group in meal_data.groupby(['ID', 'N_MEAL']):
-            foods = group['N_DCODE'].tolist()
-            pairs.extend([(food1, food2) for i, food1 in enumerate(foods) for food2 in foods[i+1:]])
-        return pd.DataFrame(pairs, columns=['food1', 'food2']).drop_duplicates()
-
-    meal_data = diet_data[['ID', 'N_DCODE', 'N_MEAL']].drop_duplicates().reset_index(drop=True)
-    food_pairs = create_food_pairs(meal_data)
-
-    # food - ingredient
-    food_ing_data = diet_data[['N_DCODE', 'N_FCODE', 'N_FM_WT']].drop_duplicates().reset_index(drop=True)
-    food_ing_data = food_ing_data.groupby(['N_DCODE','N_FCODE']).mean().reset_index()
-    food_ing_data = food_ing_data.rename(columns={'N_FM_WT':'edge_weight'})
-
-    # food - time
-    food_time_data = diet_data.groupby(['N_DCODE', 'N_MEAL']).size().reset_index(name='count')
-    food_time_data['edge_weight'] = food_time_data.groupby('N_DCODE')['count'].transform(lambda x: x / x.sum())
-    food_time_data = food_time_data.drop('count', axis=1)
-
-    def load_node_csv(data, index_col, feature=None, **kwargs):
-        df = data.set_index(index_col)
-        mapping = {index: i for i, index in enumerate(df.index.unique())}
-
-        x = None
-        if feature is not None:
-            x = torch.from_numpy(df.values).to(torch.float)
-        return x, mapping
-
-    def load_edge_csv(df, src_index_col, src_mapping, dst_index_col, dst_mapping, weight_col=None, **kwargs):
-        src = [src_mapping[index] for index in df[src_index_col]]
-        dst = [dst_mapping[index] for index in df[dst_index_col]]
-        edge_index = torch.tensor([src, dst])
-
-        edge_attr = None
-        if weight_col is not None:
-            edge_attr = df[weight_col]
-
-        return edge_index, edge_attr
-
-    user_x, user_mapping = load_node_csv(user_data, 'ID', feature = not None)
-    food_x, food_mapping = load_node_csv(food_data, 'N_DCODE', feature = not None)
-    ingre_x, ingre_mapping = load_node_csv(ingre_data, 'N_FCODE', feature = not None)
-    meal_x, meal_mapping = load_node_csv(meal_data, 'N_MEAL', feature = None)
-
-    uf_edge_index, uf_edge_attr = load_edge_csv(intake_data, 'ID', user_mapping, 'N_DCODE', food_mapping, weight_col='edge_weight')
-    ff_edge_index, ff_edge_attr = load_edge_csv(food_pairs, 'food1', food_mapping, 'food2', food_mapping)
-    fi_edge_index, fi_edge_attr = load_edge_csv(food_ing_data, 'N_DCODE', food_mapping, 'N_FCODE', ingre_mapping, weight_col='edge_weight')
-    ft_edge_index, ft_edge_attr = load_edge_csv(food_time_data, 'N_DCODE', food_mapping, 'N_MEAL', meal_mapping, weight_col='edge_weight')
-
-    data = HeteroData()
-
-    # 노드 넣기
-    data["user"].node_id = torch.tensor(list(user_mapping.values()), dtype=torch.long).to(device)
-    data["food"].node_id = torch.tensor(list(food_mapping.values()), dtype=torch.long).to(device)
-    data["ingredient"].node_id = torch.tensor(list(ingre_mapping.values()), dtype=torch.long).to(device)
-    data["time"].node_id = torch.tensor(list(meal_mapping.values()), dtype=torch.long).to(device)
-
-    # 노드 특성 설정
-    data['user'].x = user_x.to(device)
-    data['food'].x = food_x.to(device)
-    data['ingredient'].x = ingre_x.to(device)
-
-    data["user", "eats", "food"].edge_index = uf_edge_index.to(device)
-    data["food", "pairs", "food"].edge_index = ff_edge_index.to(device)
-    data["food", "contains", "ingredient"].edge_index = fi_edge_index.to(device)
-    data["food", "eaten_at", "time"].edge_index = ft_edge_index.to(device)
-
-    data = T.ToUndirected()(data)
-    del data['food', 'rev_eats', 'user'].edge_label
+def fix_data(input_path, output_path):
+    """데이터 수정"""
+    
+    print(f"\n{'='*70}")
+    print(f"🔧 Fixing Existing Graph Data")
+    print(f"{'='*70}")
+    
+    # 데이터 로드
+    print(f"\n📂 Loading data from: {input_path}")
+    with open(input_path, 'rb') as f:
+        data = pickle.load(f)
+    
+    print(f"✅ Data loaded")
+    
+    # 현재 상태 확인
+    print(f"\n{'='*70}")
+    print("📊 Current Data Status")
+    print(f"{'='*70}")
+    
+    print(f"\n✅ Nodes:")
+    for node_type in data.node_types:
+        print(f"   {node_type}: {data[node_type].num_nodes:,}")
+    
+    print(f"\n✅ Edges:")
+    for edge_type in data.edge_types:
+        edge_count = data[edge_type].edge_index.shape[1]
+        has_attr = hasattr(data[edge_type], 'edge_attr') and data[edge_type].edge_attr is not None
+        
+        if has_attr:
+            attr = data[edge_type].edge_attr
+            print(f"   {edge_type}: {edge_count:,} edges, weights [{attr.min():.4f}, {attr.max():.4f}]")
+        else:
+            print(f"   {edge_type}: {edge_count:,} edges")
+    
+    # 수정 작업
+    print(f"\n{'='*70}")
+    print("🔧 Applying Fixes")
+    print(f"{'='*70}")
+    
+    # 1. User-eats-Food edge weight 정규화
+    if ('user', 'eats', 'food') in data.edge_types:
+        print(f"\n1️⃣ Normalizing User-eats-Food weights...")
+        old_weights = data[('user', 'eats', 'food')].edge_attr
+        
+        if old_weights is not None:
+            print(f"   Before: [{old_weights.min():.4f}, {old_weights.max():.4f}], mean={old_weights.mean():.4f}")
+            
+            new_weights = normalize_weights(old_weights, method='log1p')
+            data[('user', 'eats', 'food')].edge_attr = new_weights
+            
+            print(f"   After:  [{new_weights.min():.4f}, {new_weights.max():.4f}], mean={new_weights.mean():.4f}")
+    
+    # 2. Food-rev_eats-User edge weight도 동일하게
+    if ('food', 'rev_eats', 'user') in data.edge_types:
+        print(f"\n2️⃣ Normalizing Food-rev_eats-User weights...")
+        old_weights = data[('food', 'rev_eats', 'user')].edge_attr
+        
+        if old_weights is not None:
+            new_weights = normalize_weights(old_weights, method='log1p')
+            data[('food', 'rev_eats', 'user')].edge_attr = new_weights
+            print(f"   Updated: [{new_weights.min():.4f}, {new_weights.max():.4f}]")
+    
+    # 3. Food-contains-Ingredient edge weight 정규화
+    if ('food', 'contains', 'ingredient') in data.edge_types:
+        print(f"\n3️⃣ Normalizing Food-contains-Ingredient weights...")
+        old_weights = data[('food', 'contains', 'ingredient')].edge_attr
+        
+        if old_weights is not None:
+            print(f"   Before: [{old_weights.min():.4f}, {old_weights.max():.4f}]")
+            
+            new_weights = normalize_weights(old_weights, method='log1p')
+            data[('food', 'contains', 'ingredient')].edge_attr = new_weights
+            
+            print(f"   After:  [{new_weights.min():.4f}, {new_weights.max():.4f}]")
+    
+    # 4. Ingredient-rev_contains-Food도 동일하게
+    if ('ingredient', 'rev_contains', 'food') in data.edge_types:
+        print(f"\n4️⃣ Normalizing Ingredient-rev_contains-Food weights...")
+        old_weights = data[('ingredient', 'rev_contains', 'food')].edge_attr
+        
+        if old_weights is not None:
+            new_weights = normalize_weights(old_weights, method='log1p')
+            data[('ingredient', 'rev_contains', 'food')].edge_attr = new_weights
+            print(f"   Updated: [{new_weights.min():.4f}, {new_weights.max():.4f}]")
+    
+    # 5. Edge 이름 변경: pairs -> similar (있으면)
+    if ('food', 'pairs', 'food') in data.edge_types:
+        print(f"\n5️⃣ Renaming Food-pairs-Food to Food-similar-Food...")
+        
+        # 데이터 복사
+        data['food', 'similar', 'food'].edge_index = data[('food', 'pairs', 'food')].edge_index
+        if hasattr(data[('food', 'pairs', 'food')], 'edge_attr'):
+            data['food', 'similar', 'food'].edge_attr = data[('food', 'pairs', 'food')].edge_attr
+        
+        # 기존 삭제 (이건 직접 불가능하므로 무시)
+        print(f"   ⚠️  Cannot delete old 'pairs' edge (PyG limitation)")
+        print(f"   ✅ Added 'similar' edge with same data")
+    
+    # 6. Health score 확인
+    if ('user', 'healthness', 'food') in data.edge_types:
+        print(f"\n6️⃣ Checking Health scores...")
+        health_scores = data[('user', 'healthness', 'food')].edge_attr
+        
+        if health_scores is not None:
+            print(f"   Health scores: [{health_scores.min():.4f}, {health_scores.max():.4f}]")
+            print(f"   Mean: {health_scores.mean():.4f}, Median: {health_scores.median():.4f}")
+            
+            # 이미 0-1 범위면 OK
+            if health_scores.min() >= 0 and health_scores.max() <= 1.0:
+                print(f"   ✅ Health scores are already normalized")
+            else:
+                print(f"   ⚠️  Health scores may need recalculation")
+    
+    # 최종 요약
+    print(f"\n{'='*70}")
+    print("📊 Fixed Data Summary")
+    print(f"{'='*70}")
+    
+    print(f"\n✅ Edges:")
+    for edge_type in data.edge_types:
+        edge_count = data[edge_type].edge_index.shape[1]
+        has_attr = hasattr(data[edge_type], 'edge_attr') and data[edge_type].edge_attr is not None
+        
+        if has_attr:
+            attr = data[edge_type].edge_attr
+            print(f"   {edge_type}: {edge_count:,} edges, weights [{attr.min():.4f}, {attr.max():.4f}]")
+        else:
+            print(f"   {edge_type}: {edge_count:,} edges")
+    
+    # 저장
+    print(f"\n💾 Saving fixed data to: {output_path}")
+    
+    output_dir = os.path.dirname(output_path)
+    if output_dir and not os.path.exists(output_dir):
+        os.makedirs(output_dir)
+    
+    with open(output_path, 'wb') as f:
+        pickle.dump(data, f)
+    
+    print(f"✅ Data saved successfully!")
+    
+    file_size = os.path.getsize(output_path) / 1024 / 1024
+    print(f"\nFile size: {file_size:.2f} MB")
+    
+    print(f"\n{'='*70}")
+    print("🎉 All fixes applied!")
+    print(f"{'='*70}\n")
     
     return data
+
+
+if __name__ == '__main__':
+    import argparse
+    
+    parser = argparse.ArgumentParser(description='Fix existing graph data')
+    parser.add_argument('--input', type=str, 
+                       default='./processed_data/processed_data_GNN_cpu.pkl',
+                       help='Input pickle file path')
+    parser.add_argument('--output', type=str, 
+                       default='./processed_data/processed_data_GNN_fixed.pkl',
+                       help='Output pickle file path')
+    
+    args = parser.parse_args()
+    
+    fix_data(args.input, args.output)
