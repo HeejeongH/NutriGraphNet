@@ -76,11 +76,14 @@ try:
         warnings.append(f"--result_file count mismatch: {count}/6")
     
     # 결과 비교 스크립트 경로 확인
-    if 'src/compare_health_results.py' in script_content:
+    if 'python src/compare_health_results.py' in script_content:
         print(f"   ✅ 결과 비교 스크립트 경로 (src/)")
-    elif 'compare_health_results.py' in script_content:
+    elif 'compare_health_results.py' in script_content and 'src/' not in script_content:
         print(f"   ❌ 결과 비교 스크립트 경로 오류 (src/ 없음)")
         errors.append("compare_health_results.py path should be src/")
+    else:
+        print(f"   ⚠️  결과 비교 스크립트를 찾을 수 없음")
+        warnings.append("compare_health_results.py not found in script")
         
 except Exception as e:
     print(f"   ❌ Error reading run_health_experiments.sh: {e}")
