@@ -180,13 +180,13 @@ python train_v2.py \
 # ⭐ 연구 목적: Baseline vs Health-aware 비교
 
 # 1단계: 실험 스크립트 생성
-python run_health_aware_experiments.py --epochs 50
+python src/run_health_aware_experiments.py --epochs 50
 
 # 2단계: 모든 실험 실행 (약 3-5시간 소요)
 bash run_health_experiments.sh
 
 # 3단계: 결과 비교 및 시각화
-python compare_health_results.py
+python src/compare_health_results.py
 
 # 생성되는 결과물:
 # - results/health_experiments/preference_metrics_comparison.png
@@ -247,13 +247,13 @@ NutriGraphNet/
 ├── src/
 │   ├── NutriGraphNet_v2.py          # ⭐ Health-aware GNN model
 │   ├── health_score_calculator.py   # ⭐ Personalized health scoring (EER)
+│   ├── evaluation_metrics.py        # ⭐ Health-aware evaluation metrics
+│   ├── run_health_aware_experiments.py  # ⭐ Comparative experiment generator
+│   ├── compare_health_results.py    # ⭐ Health-aware result comparison
 │   ├── training_utils.py            # Training utilities
 │   ├── HealthAwareGNN.py            # Original model
-│   └── simple_hetero_data.py        # Data structure
-├── train_v2.py                      # Main training script
-├── evaluation_metrics.py            # ⭐ Health-aware evaluation metrics
-├── run_health_aware_experiments.py  # ⭐ Comparative experiment generator
-├── compare_health_results.py        # ⭐ Health-aware result comparison
+│   └── train_v2.py                  # Training module
+├── train_v2.py                      # Main training script (root)
 ├── run_health_experiments.sh        # Auto-generated experiment script
 ├── run_all_experiments.sh           # Legacy batch experiments
 ├── compare_results.py               # Legacy comparison
@@ -297,13 +297,13 @@ NutriGraphNet/
 
 ```bash
 # 1. 실험 스크립트 생성
-python run_health_aware_experiments.py --epochs 50
+python src/run_health_aware_experiments.py --epochs 50
 
 # 2. 모든 실험 실행 (6개 모델)
 bash run_health_experiments.sh
 
 # 3. 결과 비교 및 시각화
-python compare_health_results.py
+python src/compare_health_results.py
 ```
 
 **실험 세트:**

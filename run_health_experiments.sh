@@ -121,4 +121,4 @@ echo ''
 
 # 결과 비교
 echo 'Generating comparison report...'
-python compare_health_results.py
+python src/compare_health_results.py
