@@ -1,0 +1,32 @@
+{
+  "model": "vanilla",
+  "loss": "standard",
+  "final_metrics": {
+    "accuracy": 0.4927984519769703,
+    "precision": 0.4927984519769703,
+    "recall": 1.0,
+    "f1": 0.6602344091720331,
+    "auc": 0.5
+  },
+  "best_f1": 0.6602344091720331,
+  "total_time": 88.82120609283447,
+  "args": {
+    "data_path": "data/processed_data/processed_data_GNN_cpu.pkl",
+    "test_ratio": 0.2,
+    "seed": 42,
+    "model": "vanilla",
+    "hidden_channels": 128,
+    "out_channels": 64,
+    "epochs": 50,
+    "lr": 0.001,
+    "weight_decay": 0.02,
+    "loss": "standard",
+    "health_lambda": 0.1,
+    "lambda_health_init": 0.01,
+    "lambda_health_max": 0.1,
+    "focal_gamma": 2.0,
+    "temperature": 2.0,
+    "save_path": "best_model.pth",
+    "print_every": 5
+  }
+}
