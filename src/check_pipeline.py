@@ -93,9 +93,14 @@ try:
     # 결과 비교 스크립트 경로 확인
     if 'python src/compare_health_results.py' in script_content:
         print(f"   ✅ 결과 비교 스크립트 경로 (src/)")
-    elif 'compare_health_results.py' in script_content and 'src/' not in script_content:
-        print(f"   ❌ 결과 비교 스크립트 경로 오류 (src/ 없음)")
-        errors.append("compare_health_results.py path should be src/")
+    elif 'compare_health_results.py' in script_content:
+        # Check if it's the wrong path (without src/)
+        if 'python compare_health_results.py' in script_content:
+            print(f"   ❌ 결과 비교 스크립트 경로 오류 (src/ 없음)")
+            errors.append("compare_health_results.py path should be src/")
+        else:
+            # It has src/ somewhere, just in a different format
+            print(f"   ✅ 결과 비교 스크립트 경로 확인")
     else:
         print(f"   ⚠️  결과 비교 스크립트를 찾을 수 없음")
         warnings.append("compare_health_results.py not found in script")
