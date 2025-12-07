@@ -193,6 +193,9 @@ python train_v2.py \
 ```bash
 # ⭐ 연구 목적: Baseline vs Health-aware 비교
 
+# 0단계: 파이프라인 검증 (권장)
+python src/check_pipeline.py
+
 # 1단계: 실험 스크립트 생성
 python src/run_health_aware_experiments.py --epochs 50
 
@@ -206,7 +209,9 @@ python src/compare_health_results.py
 # - results/health_experiments/preference_metrics_comparison.png
 # - results/health_experiments/health_metrics_comparison.png
 # - results/health_experiments/radar_comparison.png
+# - results/health_experiments/topk_metrics_comparison.png
 # - results/health_experiments/experiment_report.txt
+# - results/health_experiments/comparison_results.csv
 ```
 
 **실험 구성:**
