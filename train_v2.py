@@ -586,9 +586,12 @@ def main(args):
         metadata, input_dims, device
     )
     
-    # Count parameters
-    num_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
-    print(f"   Total parameters: {num_params:,}")
+    # Count parameters (skip for lazy modules)
+    try:
+        num_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
+        print(f"   Total parameters: {num_params:,}")
+    except (ValueError, RuntimeError):
+        print(f"   Total parameters: (will be initialized during first forward pass)")
     
     # Loss function
     print(f"\n📊 Loss function: {args.loss}")
