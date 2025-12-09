@@ -46,3 +46,7 @@ Thumbs.db
 .cache/
 create_test_data.py
 prepare_data_simple.py
+cleanup_plan.txt
+
+# Old/Archived files
+etc/old_versions/
