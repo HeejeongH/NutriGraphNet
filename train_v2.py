@@ -688,7 +688,7 @@ def main(args):
     
     # Load best model and final evaluation
     print(f"\n🔍 Final evaluation with best model...")
-    checkpoint = torch.load(args.save_path)
+    checkpoint = torch.load(args.save_path, weights_only=False)
     model.load_state_dict(checkpoint['model_state_dict'])
     
     final_loss, final_metrics = evaluate(model, data, test_data, criterion, device, has_health)
