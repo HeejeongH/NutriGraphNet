@@ -72,14 +72,19 @@ except Exception as e:
 # 3. run_health_experiments.sh 명령어 확인
 print("\n3️⃣ run_health_experiments.sh 명령어 확인:")
 try:
-    # Try UTF-8 first, fallback to system encoding
-    try:
-        with open('run_health_experiments.sh', 'r', encoding='utf-8') as f:
-            script_content = f.read()
-    except UnicodeDecodeError:
-        import locale
-        system_encoding = locale.getpreferredencoding()
-        with open('run_health_experiments.sh', 'r', encoding=system_encoding) as f:
+    # Try UTF-8 first, fallback to system encoding, then ignore errors
+    script_content = None
+    for encoding in ['utf-8', 'cp949', 'latin-1']:
+        try:
+            with open('run_health_experiments.sh', 'r', encoding=encoding) as f:
+                script_content = f.read()
+            break
+        except UnicodeDecodeError:
+            continue
+    
+    if script_content is None:
+        # Last resort: read with error handling
+        with open('run_health_experiments.sh', 'r', encoding='utf-8', errors='ignore') as f:
             script_content = f.read()
     
     # --result_file이 모든 실험에 있는지 확인

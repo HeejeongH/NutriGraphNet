@@ -230,8 +230,8 @@ def generate_experiment_script(experiments, output_file='run_health_experiments.
         ""
     ])
     
-    # 스크립트 저장
-    with open(output_file, 'w') as f:
+    # 스크립트 저장 (UTF-8 인코딩)
+    with open(output_file, 'w', encoding='utf-8') as f:
         f.write('\n'.join(script_lines))
     
     # 실행 권한 부여
