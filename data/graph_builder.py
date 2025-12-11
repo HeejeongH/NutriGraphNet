@@ -16,23 +16,40 @@ import os
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'src'))
 
 
-def normalize_weights(weights, method='log1p'):
-    """Edge weight 정규화"""
+def normalize_weights(weights, method='quantile'):
+    """Edge weight 정규화
+    
+    Args:
+        weights: 원본 가중치
+        method: 정규화 방법
+            - 'quantile': 상위 10%를 1.0으로, 나머지는 0-0.9 범위로 매핑 (권장)
+            - 'minmax': 전체 범위를 0-1로 선형 매핑
+            - 'log1p': Log 변환 후 정규화 (작은 값 강조, 권장 안 함)
+            - 'clip': 이상치 제거 후 정규화
+    """
     if isinstance(weights, torch.Tensor):
         weights = weights.cpu().numpy()
     
-    if method == 'log1p':
-        # Log transformation: log(1 + x)
-        normalized = np.log1p(weights)
-        # 0-1 범위로 추가 정규화
-        if normalized.max() > 0:
-            normalized = normalized / normalized.max()
+    if method == 'quantile':
+        # 상위 10%를 강조하는 정규화
+        q90 = np.quantile(weights, 0.9)
+        normalized = np.where(
+            weights >= q90,
+            0.9 + 0.1 * (weights - q90) / (weights.max() - q90 + 1e-8),
+            0.9 * (weights / (q90 + 1e-8))
+        )
+        normalized = np.clip(normalized, 0, 1)
     elif method == 'minmax':
         # Min-max normalization
         if weights.max() > weights.min():
             normalized = (weights - weights.min()) / (weights.max() - weights.min())
         else:
             normalized = np.ones_like(weights) * 0.5
+    elif method == 'log1p':
+        # Log transformation: log(1 + x) - 작은 값 강조
+        normalized = np.log1p(weights)
+        if normalized.max() > 0:
+            normalized = normalized / normalized.max()
     elif method == 'clip':
         # Clipping outliers
         normalized = np.clip(weights, 0, 10)
