@@ -554,7 +554,18 @@ def train_one_fold(
         heads=args.heads
     ).to(device)
     
-    # Count parameters
+    # Initialize model with a dummy forward pass
+    print("🔧 Initializing model...")
+    with torch.no_grad():
+        # Create a small dummy batch for initialization
+        dummy_edge_index = train_data[('user', 'eats', 'food')].edge_label_index[:, :10].to(device)
+        _ = model(
+            {k: v.to(device) for k, v in train_data.x_dict.items()},
+            {k: v.to(device) for k, v in train_data.edge_index_dict.items()},
+            dummy_edge_index
+        )
+    
+    # Count parameters (after initialization)
     num_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
     print(f"📊 Model Parameters: {num_params:,}")
     
