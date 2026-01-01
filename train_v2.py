@@ -79,12 +79,12 @@ class VanillaGNN(nn.Module):
             ('food', 'rev_eats', 'user'): GraphConv(out_channels, out_channels)
         })
         
+        # Simpler decoder without Sigmoid
         self.decoder = nn.Sequential(
             nn.Linear(out_channels * 2, hidden_channels),
             nn.ReLU(),
             nn.Dropout(0.3),
-            nn.Linear(hidden_channels, 1),
-            nn.Sigmoid()
+            nn.Linear(hidden_channels, 1)
         )
     
     def forward(self, x_dict, edge_index_dict, edge_label_index, **kwargs):
@@ -102,7 +102,8 @@ class VanillaGNN(nn.Module):
         food_emb = current_x['food'][food_indices]
         
         combined = torch.cat([user_emb, food_emb], dim=-1)
-        return self.decoder(combined).squeeze()
+        logits = self.decoder(combined).squeeze()
+        return torch.sigmoid(logits).clamp(min=1e-7, max=1-1e-7)
 
 
 class GraphSAGE_Model(nn.Module):
@@ -125,12 +126,12 @@ class GraphSAGE_Model(nn.Module):
             ('food', 'rev_eats', 'user'): SAGEConv(out_channels, out_channels)
         })
         
+        # Simpler decoder without Sigmoid (will add it in forward)
         self.decoder = nn.Sequential(
             nn.Linear(out_channels * 2, hidden_channels),
             nn.ReLU(),
             nn.Dropout(0.3),
-            nn.Linear(hidden_channels, 1),
-            nn.Sigmoid()
+            nn.Linear(hidden_channels, 1)
         )
     
     def forward(self, x_dict, edge_index_dict, edge_label_index, **kwargs):
@@ -148,7 +149,9 @@ class GraphSAGE_Model(nn.Module):
         food_emb = current_x['food'][food_indices]
         
         combined = torch.cat([user_emb, food_emb], dim=-1)
-        return self.decoder(combined).squeeze()
+        logits = self.decoder(combined).squeeze()
+        # Apply sigmoid with clamping to avoid saturation
+        return torch.sigmoid(logits).clamp(min=1e-7, max=1-1e-7)
 
 
 class GAT_Model(nn.Module):
@@ -172,12 +175,12 @@ class GAT_Model(nn.Module):
             )
         })
         
+        # Simpler decoder without Sigmoid
         self.decoder = nn.Sequential(
             nn.Linear(out_channels * 2, hidden_channels),
             nn.ReLU(),
             nn.Dropout(0.3),
-            nn.Linear(hidden_channels, 1),
-            nn.Sigmoid()
+            nn.Linear(hidden_channels, 1)
         )
         
         self.batch_norms = nn.ModuleDict({
@@ -199,7 +202,8 @@ class GAT_Model(nn.Module):
         food_emb = current_x['food'][food_indices]
         
         combined = torch.cat([user_emb, food_emb], dim=-1)
-        return self.decoder(combined).squeeze()
+        logits = self.decoder(combined).squeeze()
+        return torch.sigmoid(logits).clamp(min=1e-7, max=1-1e-7)
 
 
 # ============================================
@@ -213,6 +217,8 @@ class StandardLoss(nn.Module):
         self.bce = nn.BCELoss()
     
     def forward(self, predictions, targets, **kwargs):
+        # Clamp predictions to avoid numerical instability
+        predictions = torch.clamp(predictions, min=1e-7, max=1-1e-7)
         return self.bce(predictions, targets)
 
 
