@@ -305,10 +305,10 @@ class HealthAwareLoss(nn.Module):
         self.lambda_health = lambda_health
         self.ranking_weight = ranking_weight
         self.margin = margin
+        self.pos_weight = pos_weight
         
-        self.bce = nn.BCEWithLogitsLoss(
-            pos_weight=torch.tensor([pos_weight])
-        )
+        # BCEWithLogitsLoss will be created in forward() to ensure correct device
+        self.bce = None
         
     def forward(
         self,
@@ -327,6 +327,18 @@ class HealthAwareLoss(nn.Module):
         Returns:
             Combined loss
         """
+        # Initialize BCE loss on the same device as pred (lazy initialization)
+        if self.bce is None:
+            self.bce = nn.BCEWithLogitsLoss(
+                pos_weight=torch.tensor([self.pos_weight], device=pred.device)
+            )
+        
+        # Ensure pos_weight is on the same device
+        if self.bce.pos_weight.device != pred.device:
+            self.bce = nn.BCEWithLogitsLoss(
+                pos_weight=torch.tensor([self.pos_weight], device=pred.device)
+            )
+        
         # 1. BCE Loss
         bce_loss = self.bce(pred, target)
         
