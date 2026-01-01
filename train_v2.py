@@ -642,9 +642,9 @@ def main(args):
         weight_decay=args.weight_decay
     )
     
-    # Learning rate scheduler
+    # Learning rate scheduler (more gradual decay)
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
-        optimizer, T_max=args.epochs, eta_min=1e-6
+        optimizer, T_max=args.epochs, eta_min=args.lr * 0.1  # 10% of initial LR
     )
     
     print(f"\n📚 Training configuration:")
