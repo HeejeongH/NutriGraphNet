@@ -1,0 +1,91 @@
+
+======================================================================
+🔄 데이터 재생성 시작
+======================================================================
+
+📂 Input:  etc/old_versions/processed_data_GNN_cpu.pkl
+📂 Output: data/processed_data/processed_data_GNN_v3.pkl
+🔧 Method: Quantile-based normalization
+
+======================================================================
+🔧 Fixing Existing Graph Data
+======================================================================
+
+📂 Loading data from: etc/old_versions/processed_data_GNN_cpu.pkl
+✅ Data loaded
+
+======================================================================
+📊 Current Data Status
+======================================================================
+
+✅ Nodes:
+   user: 20,820
+   food: 31,458
+   ingredient: 3,284
+   time: 4
+
+✅ Edges:
+   ('user', 'eats', 'food'): 262,270 edges, weights [0.0010, 192.0000]
+   ('food', 'contains', 'ingredient'): 249,672 edges, weights [0.0000, 19399.8008]
+   ('food', 'eaten_at', 'time'): 47,050 edges, weights [0.0015, 1.0000]
+   ('user', 'healthness', 'food'): 262,270 edges, weights [0.2954, 0.9580]
+   ('food', 'similar', 'food'): 108,062 edges
+   ('food', 'rev_eats', 'user'): 262,270 edges, weights [0.0010, 192.0000]
+   ('ingredient', 'rev_contains', 'food'): 249,672 edges, weights [0.0000, 19399.8008]
+   ('time', 'rev_eaten_at', 'food'): 47,050 edges, weights [0.0015, 1.0000]
+   ('food', 'rev_healthness', 'user'): 262,270 edges, weights [0.2954, 0.9580]
+
+======================================================================
+🔧 Applying Fixes
+======================================================================
+
+1️⃣ Normalizing User-eats-Food weights...
+   Before: [0.0010, 192.0000], mean=0.9594
+   After:  [0.0002, 1.0000], mean=0.1087
+
+2️⃣ Normalizing Food-rev_eats-User weights...
+   Updated: [0.0002, 1.0000]
+
+3️⃣ Normalizing Food-contains-Ingredient weights...
+   Before: [0.0000, 19399.8008]
+   After:  [0.0000, 1.0000]
+
+4️⃣ Normalizing Ingredient-rev_contains-Food weights...
+   Updated: [0.0000, 1.0000]
+
+6️⃣ Checking Health scores...
+   Health scores: [0.2954, 0.9580]
+   Mean: 0.6572, Median: 0.6504
+   ✅ Health scores are already normalized
+
+======================================================================
+📊 Fixed Data Summary
+======================================================================
+
+✅ Edges:
+   ('user', 'eats', 'food'): 262,270 edges, weights [0.0002, 1.0000]
+   ('food', 'contains', 'ingredient'): 249,672 edges, weights [0.0000, 1.0000]
+   ('food', 'eaten_at', 'time'): 47,050 edges, weights [0.0015, 1.0000]
+   ('user', 'healthness', 'food'): 262,270 edges, weights [0.2954, 0.9580]
+   ('food', 'similar', 'food'): 108,062 edges
+   ('food', 'rev_eats', 'user'): 262,270 edges, weights [0.0002, 1.0000]
+   ('ingredient', 'rev_contains', 'food'): 249,672 edges, weights [0.0000, 1.0000]
+   ('time', 'rev_eaten_at', 'food'): 47,050 edges, weights [0.0015, 1.0000]
+   ('food', 'rev_healthness', 'user'): 262,270 edges, weights [0.2954, 0.9580]
+
+💾 Saving fixed data to: data/processed_data/processed_data_GNN_v3.pkl
+✅ Data saved successfully!
+
+File size: 38.52 MB
+
+======================================================================
+🎉 All fixes applied!
+======================================================================
+
+
+======================================================================
+✅ 데이터 재생성 완료!
+======================================================================
+
+📋 다음 단계:
+  python train_v2.py --data_path data/processed_data/processed_data_GNN_v3.pkl --model graphsage --epochs 10
