@@ -79,13 +79,21 @@ class VanillaGNN(nn.Module):
             ('food', 'rev_eats', 'user'): GraphConv(out_channels, out_channels)
         })
         
-        # Simpler decoder without Sigmoid
+        # Decoder with layer norm for stability
         self.decoder = nn.Sequential(
             nn.Linear(out_channels * 2, hidden_channels),
+            nn.LayerNorm(hidden_channels),
             nn.ReLU(),
             nn.Dropout(0.3),
             nn.Linear(hidden_channels, 1)
         )
+        
+        # Initialize decoder weights with smaller variance
+        for m in self.decoder.modules():
+            if isinstance(m, nn.Linear):
+                nn.init.xavier_uniform_(m.weight, gain=0.5)
+                if m.bias is not None:
+                    nn.init.constant_(m.bias, 0)
     
     def forward(self, x_dict, edge_index_dict, edge_label_index, **kwargs):
         current_x = {node_type: self.input_projections[node_type](features)
@@ -126,13 +134,21 @@ class GraphSAGE_Model(nn.Module):
             ('food', 'rev_eats', 'user'): SAGEConv(out_channels, out_channels)
         })
         
-        # Simpler decoder without Sigmoid (will add it in forward)
+        # Decoder with layer norm for stability
         self.decoder = nn.Sequential(
             nn.Linear(out_channels * 2, hidden_channels),
+            nn.LayerNorm(hidden_channels),
             nn.ReLU(),
             nn.Dropout(0.3),
             nn.Linear(hidden_channels, 1)
         )
+        
+        # Initialize decoder weights with smaller variance
+        for m in self.decoder.modules():
+            if isinstance(m, nn.Linear):
+                nn.init.xavier_uniform_(m.weight, gain=0.5)
+                if m.bias is not None:
+                    nn.init.constant_(m.bias, 0)
     
     def forward(self, x_dict, edge_index_dict, edge_label_index, **kwargs):
         current_x = {node_type: self.input_projections[node_type](features)
@@ -175,13 +191,21 @@ class GAT_Model(nn.Module):
             )
         })
         
-        # Simpler decoder without Sigmoid
+        # Decoder with layer norm for stability
         self.decoder = nn.Sequential(
             nn.Linear(out_channels * 2, hidden_channels),
+            nn.LayerNorm(hidden_channels),
             nn.ReLU(),
             nn.Dropout(0.3),
             nn.Linear(hidden_channels, 1)
         )
+        
+        # Initialize decoder weights with smaller variance
+        for m in self.decoder.modules():
+            if isinstance(m, nn.Linear):
+                nn.init.xavier_uniform_(m.weight, gain=0.5)
+                if m.bias is not None:
+                    nn.init.constant_(m.bias, 0)
         
         self.batch_norms = nn.ModuleDict({
             node_type: nn.BatchNorm1d(out_channels) for node_type in metadata[0]
