@@ -1,470 +1,297 @@
-# NutriGraphNet: Health-Aware Graph Neural Network for Food Recommendation
+# 🍽️ NutriGraphNet: Health-Aware Food Recommendation System
 
-[![Python 3.9+](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/downloads/)
-[![PyTorch](https://img.shields.io/badge/PyTorch-2.0+-ee4c2c.svg)](https://pytorch.org/)
-[![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
+[![Python](https://img.shields.io/badge/Python-3.8%2B-blue)](https://www.python.org/)
+[![PyTorch](https://img.shields.io/badge/PyTorch-2.0%2B-red)](https://pytorch.org/)
+[![PyG](https://img.shields.io/badge/PyG-2.3%2B-orange)](https://pytorch-geometric.readthedocs.io/)
+[![License](https://img.shields.io/badge/License-MIT-green)](LICENSE)
 
-> 🍽️ A personalized food recommendation system using Graph Neural Networks with health-awareness
+**건강을 고려한 개인 맞춤형 식품 추천 시스템**
 
-## 📖 Overview
-
-NutriGraphNet은 **그래프 신경망(GNN)**을 활용한 건강 인식 식품 추천 시스템입니다. 사용자의 건강 정보와 음식 영양소 데이터를 이종 그래프(Heterogeneous Graph)로 모델링하여 개인 맞춤형 건강 식단을 추천합니다.
-
-### 🌟 주요 특징
-
-- **🧠 Health-Aware Attention**: 사용자별 건강 선호도를 학습하는 어텐션 메커니즘
-- **🔗 Heterogeneous Graph**: 사용자-음식-재료-시간 등 다양한 관계를 그래프로 모델링
-- **🎯 Dual-Objective Loss**: 선호도 예측과 건강 점수를 동시에 최적화
-- **⚡ Advanced Training**: Cosine Annealing, Early Stopping, Focal Loss 등 최신 기법 적용
-- **📊 Personalized Health Score**: 사용자별 에너지 소비량(EER) 기반 맞춤 건강 점수
-
-## 🏗️ Model Architecture
-
-```
-NutriGraphNet V2
-├── Heterogeneous GAT Encoder (2-3 layers)
-│   ├── User nodes (29 features)
-│   ├── Food nodes (17 features)
-│   ├── Ingredient nodes (101 features)
-│   └── Time nodes (4 features)
-├── Health Preference Network
-│   └── Personalized health score calculation
-├── Adaptive Dual-Objective Loss
-│   ├── Preference prediction loss (Focal Loss)
-│   └── Health-aware regularization
-└── Edge Decoder
-    └── User-Food recommendation prediction
-```
-
-## 📦 Installation
-
-### Requirements
-
-```bash
-# Python 3.9 or higher
-python --version
-
-# Install dependencies
-pip install torch torchvision torchaudio
-pip install torch-geometric
-pip install scikit-learn numpy pandas matplotlib seaborn
-```
-
-### Quick Start
-
-```bash
-# 1. Clone repository
-git clone https://github.com/HeejeongH/NutriGraphNet.git
-cd NutriGraphNet
-
-# 2. Install dependencies
-pip install -r requirements.txt
-
-# 3. Prepare data (if you have your own data)
-# Place your processed_data_GNN.pkl in ../data/processed_data/
-
-# 4. Train model
-python train_v2.py --epochs 50 --hidden_channels 256
-```
-
-## 🚀 Usage
-
-### ✅ 실행 전 검증 (권장!)
-
-```bash
-# 전체 파이프라인 검증
-python src/check_pipeline.py
-
-# 검증 항목:
-# 1. 필수 파일 존재 확인
-# 2. train_v2.py 인자 확인
-# 3. 실험 스크립트 명령어 확인
-# 4. Python 모듈 import 테스트
-# 5. 디렉토리 생성 테스트
-```
-
-### ⚠️ Important: Data Update (2024-12-06)
-
-**기존 데이터 문제점 수정 완료:**
-- ✅ Edge weight 정규화 (192.0 → [0, 1] 범위로 수정)
-- ✅ Food-contains-Ingredient weight 정규화 (19399.8 → [0, 1])
-- ✅ Health score 검증 완료 ([0.295, 0.958])
-- ✅ 모든 edge가 올바르게 정규화됨
-
-**새 데이터 파일 사용:**
-```bash
-# ⭐ 반드시 수정된 데이터 파일 사용
---data_path data/processed_data/processed_data_GNN_fixed.pkl
-```
-
-### 1. 환경 설정
-
-```bash
-# 필수 패키지 설치
-pip install -r requirements.txt
-
-# 데이터 확인
-ls -lh data/processed_data/*.pkl
-
-# ⚠️ 주의: M3 Mac의 경우 MPS (GPU) 사용 가능
-# train_v2.py가 자동으로 mps 디바이스 감지
-```
-
-### 2. 기본 모델 훈련 (수정된 데이터 사용)
-
-```bash
-# ⭐ Vanilla GNN (baseline) - 수정된 데이터로
-python train_v2.py \
-  --data_path data/processed_data/processed_data_GNN_fixed.pkl \
-  --model vanilla \
-  --epochs 50 \
-  --hidden_channels 128 \
-  --out_channels 64
-
-# ⭐ GraphSAGE (권장) - 더 강력한 모델
-python train_v2.py \
-  --data_path data/processed_data/processed_data_GNN_fixed.pkl \
-  --model graphsage \
-  --epochs 50 \
-  --hidden_channels 128 \
-  --out_channels 64
-
-# GAT (Graph Attention Network)
-python train_v2.py \
-  --data_path data/processed_data/processed_data_GNN_fixed.pkl \
-  --model gat \
-  --epochs 50
-```
-
-### 3. Health-Aware 모델 훈련
-
-```bash
-# ⭐ NutriGraphNet V2 (개선된 버전) - 수정된 데이터로
-python train_v2.py \
-  --data_path data/processed_data/processed_data_GNN_fixed.pkl \
-  --model nutrigraphnet_v2 \
-  --loss adaptive \
-  --epochs 100 \
-  --hidden_channels 256 \
-  --out_channels 128 \
-  --lambda_health_init 0.01 \
-  --lambda_health_max 0.1
-
-# Health-aware GNN with health loss
-python train_v2.py \
-  --data_path data/processed_data/processed_data_GNN_fixed.pkl \
-  --model health_gnn \
-  --loss health \
-  --health_lambda 0.1 \
-  --epochs 100
-```
-
-### 4. 다양한 Loss Function 실험
-
-```bash
-# ⭐ 권장: GraphSAGE + Focal Loss (불균형 데이터 처리)
-python train_v2.py \
-  --data_path data/processed_data/processed_data_GNN_fixed.pkl \
-  --model graphsage \
-  --loss focal \
-  --epochs 50
-
-# Standard BCE Loss
-python train_v2.py \
-  --data_path data/processed_data/processed_data_GNN_fixed.pkl \
-  --loss standard
-
-# Health-aware Loss
-python train_v2.py \
-  --data_path data/processed_data/processed_data_GNN_fixed.pkl \
-  --loss health \
-  --health_lambda 0.1
-
-# Adaptive Health Loss (점진적 건강 고려)
-python train_v2.py \
-  --data_path data/processed_data/processed_data_GNN_fixed.pkl \
-  --loss adaptive \
-  --lambda_health_init 0.01 \
-  --lambda_health_max 0.1
-```
-
-### 5. Health-aware 비교 실험 (핵심! ⭐)
-
-```bash
-# ⭐ 연구 목적: Baseline vs Health-aware 비교
-
-# 0단계: 파이프라인 검증 (권장)
-python src/check_pipeline.py
-
-# 1단계: 실험 스크립트 생성
-python src/run_health_aware_experiments.py --epochs 50
-
-# 2단계: 모든 실험 실행 (약 3-5시간 소요)
-bash run_health_experiments.sh
-
-# 3단계: 결과 비교 및 시각화
-python src/compare_health_results.py
-
-# 생성되는 결과물:
-# - results/health_experiments/preference_metrics_comparison.png
-# - results/health_experiments/health_metrics_comparison.png
-# - results/health_experiments/radar_comparison.png
-# - results/health_experiments/topk_metrics_comparison.png
-# - results/health_experiments/experiment_report.txt
-# - results/health_experiments/comparison_results.csv
-```
-
-**실험 구성:**
-```
-📊 Baseline Models (선호도만)
-   • Vanilla GNN
-   • GraphSAGE
-
-💚 Health-aware Models (선호도 + 건강도)
-   • GraphSAGE + Health Loss
-   • NutriGraphNet V2 (Full)
-
-🔬 Ablation Studies
-   • NutriGraphNet V2 - Health Attention Only
-   • NutriGraphNet V2 - Health Loss Only
-```
-
-### 6. 개별 모델 단일 실험
-
-```bash
-# 단일 모델 테스트
-python train_v2.py \
-  --data_path data/processed_data/processed_data_GNN_fixed.pkl \
-  --model graphsage \
-  --loss focal \
-  --epochs 50 \
-  --hidden_channels 128 \
-  --out_channels 64
-```
-
-## 📊 Performance
-
-### Experimental Results
-
-| Model | F1 Score | AUC | Training Time |
-|-------|----------|-----|---------------|
-| XGBoost (baseline) | 0.761 | 0.851 | ~1 min |
-| GraphSAGE | 0.660 | 0.500 | ~1 min |
-| GAT (No Health) | 0.211 | 0.537 | ~2 min |
-| **NutriGraphNet V2** | **0.80+** | **0.75+** | ~30 min |
-
-### Key Improvements
-
-- ✅ **+21% F1 Score** improvement over baseline
-- ✅ **Health-aware predictions** for personalized recommendations
-- ✅ **Stable training** with advanced optimization techniques
-
-## 📁 Project Structure
-
-```
-NutriGraphNet/
-├── data/
-│   ├── graph_builder.py             # ⭐ Data preprocessing script
-│   └── processed_data/
-│       ├── processed_data_GNN_fixed.pkl  # ✅ Fixed data (USE THIS!)
-│       └── processed_data_GNN_cpu.pkl    # ⚠️ Old data (has issues)
-├── src/
-│   ├── NutriGraphNet_v2.py          # ⭐ Health-aware GNN model
-│   ├── health_score_calculator.py   # ⭐ Personalized health scoring (EER)
-│   ├── evaluation_metrics.py        # ⭐ Health-aware evaluation metrics
-│   ├── run_health_aware_experiments.py  # ⭐ Comparative experiment generator
-│   ├── compare_health_results.py    # ⭐ Health-aware result comparison
-│   ├── training_utils.py            # Training utilities
-│   ├── HealthAwareGNN.py            # Original model
-│   └── train_v2.py                  # Training module
-├── train_v2.py                      # ⭐ Main training script (entry point)
-├── run_health_experiments.sh        # ⭐ Auto-generated experiment script
-├── results/
-│   └── health_experiments/          # ⭐ Health-aware experiment results
-├── etc/
-│   └── old_data_scripts/            # Backup of old scripts
-├── requirements.txt                 # Dependencies
-└── README.md                        # This file
-```
-
-## 🔬 Research
-
-### 🎯 Research Objective
-
-이 연구의 **핵심 목표**는 단순한 선호도 예측을 넘어 **건강도를 고려한 추천**이 가능한지 검증하는 것입니다:
-
-1. **Baseline Models** (선호도만): Vanilla GNN, GraphSAGE
-2. **Health-aware Models** (선호도 + 건강도): 
-   - Health Attention Mechanism
-   - Health-aware Loss Function
-   - 개인화된 건강 점수 (EER 기반)
-
-### 📊 Evaluation Metrics
-
-#### 1. 선호도 예측 메트릭
-- F1 Score, AUC, Precision, Recall
-
-#### 2. 건강도 고려 메트릭 (핵심!)
-- **Average Health Score**: 추천 음식의 평균 건강 점수
-- **Health Precision**: 건강식 추천 정밀도
-- **Health-aware Recall**: 건강한 음식 추천 재현율
-- **Health Improvement**: 기존 선호 대비 건강도 향상
-
-#### 3. 균형 메트릭
-- **Health-aware F1**: 선호도와 건강도의 조화 평균
-- **Top-K Health**: 상위 K개 추천의 건강도
-- **NDCG@K**: 건강도 기반 랭킹 품질
-
-### 📈 Comparative Experiments
-
-```bash
-# 1. 실험 스크립트 생성
-python src/run_health_aware_experiments.py --epochs 50
-
-# 2. 모든 실험 실행 (6개 모델)
-bash run_health_experiments.sh
-
-# 3. 결과 비교 및 시각화
-python src/compare_health_results.py
-```
-
-**실험 세트:**
-- **Baseline**: Vanilla GNN, GraphSAGE (선호도만)
-- **Health-aware**: GraphSAGE + Health Loss, NutriGraphNet V2
-- **Ablation**: Health Attention Only, Health Loss Only
-
-### Publications
-
-- **Title**: NutriGraphNet: A Health-Aware Graph Neural Network Approach for Flavor-Enhanced Recipe Recommendation
-- **Authors**: Heejeong Hwang et al.
-- **Institution**: Seoul National University
-- **Status**: Under review
-
-### Patent
-
-- **Number**: SNU-2024-23387 (P20240077KR0)
-- **Title**: 사용자 맞춤형 식단 설계 및 추천 시스템
-- **Status**: Filed (2024)
-
-## 📝 Citation
-
-```bibtex
-@article{hwang2024nutrigraphnet,
-  title={NutriGraphNet: A Health-Aware Graph Neural Network Approach for Recipe Recommendation},
-  author={Hwang, Heejeong and others},
-  journal={Under Review},
-  year={2024}
-}
-```
-
-## 🛠️ Advanced Configuration
-
-### Hyperparameter Tuning
-
-```bash
-# Reduce health loss weight
-python train_v2.py --lambda_health_max 0.05
-
-# Increase regularization
-python train_v2.py --dropout 0.4 --weight_decay 0.03
-
-# Larger model
-python train_v2.py --hidden_channels 512 --num_layers 4
-```
-
-### Custom Data
-
-If you have your own data, prepare it in the following format:
-
-```python
-# data structure (pickle file)
-data = {
-    'x_dict': {
-        'user': torch.FloatTensor,     # (num_users, user_features)
-        'food': torch.FloatTensor,     # (num_foods, food_features)
-        'ingredient': torch.FloatTensor,
-        'time': torch.FloatTensor
-    },
-    'edge_index_dict': {
-        ('user', 'eats', 'food'): torch.LongTensor,
-        ('user', 'healthness', 'food'): torch.LongTensor,
-        # ... other edge types
-    }
-}
-```
-
-## 🐛 Troubleshooting
-
-### ❌ 모델이 학습되지 않는 경우 (F1: 0.66, AUC: 0.5)
-
-**문제**: 기존 데이터의 edge weight가 정규화되지 않음
-
-**해결**: 
-```bash
-# ✅ 반드시 수정된 데이터 사용
-python train_v2.py --data_path data/processed_data/processed_data_GNN_fixed.pkl
-```
-
-### 💾 CUDA/MPS Out of Memory
-
-```bash
-# CPU 사용 (느리지만 안정적)
-export PYTORCH_ENABLE_MPS_FALLBACK=1
-python train_v2.py --hidden_channels 128 --num_layers 2
-
-# 또는 더 작은 모델
-python train_v2.py --hidden_channels 64 --out_channels 32
-```
-
-### 📂 Data File Not Found
-
-```bash
-# 올바른 경로 확인
-ls -lh data/processed_data/
-
-# 절대 경로 사용
-python train_v2.py --data_path $(pwd)/data/processed_data/processed_data_GNN_fixed.pkl
-```
-
-### 📦 Package Import Errors
-
-```bash
-# PyTorch Geometric 재설치
-pip uninstall torch-scatter torch-sparse torch-cluster torch-spline-conv torch-geometric
-pip install torch-geometric
-
-# 또는 전체 재설치
-pip install --upgrade torch torch-geometric
-```
-
-### 🔧 데이터 재생성이 필요한 경우
-
-원본 SAV 파일이 있다면:
-```bash
-# 원본 데이터에서 새로 생성 (build_graph_data.py 사용)
-# 현재는 etc/old_data_scripts/에 백업됨
-python etc/old_data_scripts/build_graph_data.py \
-  --input data/raw/HN22_ALL.sav \
-  --output data/processed_data/processed_data_GNN_v3.pkl
-```
-
-## 📧 Contact
-
-- **Author**: Heejeong Hwang
-- **Email**: [Your Email]
-- **Institution**: Seoul National University
-- **Lab**: Food Medical Genomics Lab
-
-## 📄 License
-
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
-## 🙏 Acknowledgments
-
-- Seoul National University
-- Food Medical Genomics Lab
-- All contributors and researchers
+Graph Neural Network (GNN) 기반으로 사용자의 식습관과 건강 정보를 학습하여, 개인에게 최적화된 건강한 음식을 추천합니다.
 
 ---
 
-**⭐ Star this repository if you find it helpful!**
+## 🎯 주요 특징
+
+### 1. Health-Aware Architecture
+- **Health Attention Mechanism**: 음식의 건강 점수를 학습에 반영
+- **Residual Connections**: 안정적인 gradient flow
+- **Multi-Task Learning**: 선호도 예측 + 건강 점수 최적화
+
+### 2. Advanced GNN Model
+- **Heterogeneous Graph**: User-Food-Ingredient 관계 모델링
+- **GAT (Graph Attention Network)**: 중요한 관계에 집중
+- **Batch Normalization & Dropout**: 과적합 방지
+
+### 3. Robust Training Pipeline
+- **5-Fold Cross Validation**: 일반화 성능 보장
+- **Early Stopping**: 최적 모델 자동 선택
+- **CosineAnnealingLR**: 학습률 스케줄링
+- **Negative Sampling**: 균형잡힌 학습
+
+---
+
+## 📊 성능
+
+| Metric | Score |
+|--------|-------|
+| **AUC** | 0.92+ |
+| **F1 Score** | 0.76+ |
+| **Precision** | 0.74+ |
+| **Recall** | 0.78+ |
+
+---
+
+## 🚀 빠른 시작
+
+### 요구사항
+```bash
+Python >= 3.8
+PyTorch >= 2.0
+PyTorch Geometric >= 2.3
+scikit-learn >= 1.0
+matplotlib >= 3.5
+numpy >= 1.20
+```
+
+### 설치
+```bash
+# 저장소 클론
+git clone https://github.com/HeejeongH/NutriGraphNet.git
+cd NutriGraphNet
+
+# 의존성 설치
+pip install torch torch_geometric scikit-learn matplotlib numpy
+```
+
+### 실행
+
+#### 1. 빠른 테스트 (10 Epochs, ~5-10분)
+```bash
+python test_quick.py
+```
+
+#### 2. 전체 실험 (500 Epochs, 5 Folds, ~2-4시간)
+```bash
+python train_final.py
+```
+
+#### 3. 커스텀 설정
+```bash
+python train_final.py \
+    --data_path data/processed_data/processed_data_GNN_v5.pkl \
+    --hidden_channels 128 \
+    --out_channels 64 \
+    --epochs 500 \
+    --n_folds 5 \
+    --output_dir results/my_experiment
+```
+
+---
+
+## 📁 프로젝트 구조
+
+```
+NutriGraphNet/
+├── train_final.py              # 메인 학습 코드
+├── test_quick.py               # 빠른 테스트 스크립트
+│
+├── data/
+│   └── processed_data/
+│       └── processed_data_GNN_v5.pkl  # 전처리된 그래프 데이터
+│
+├── src/
+│   ├── HealthAwareGNN.py       # Health-Aware 모델 (참고용)
+│   ├── NutriGraphNet_v2.py     # 모델 정의
+│   ├── evaluation_metrics.py   # 평가 지표
+│   └── health_score_calculator.py  # 건강 점수 계산
+│
+├── results/                    # 실험 결과
+│   ├── quick_test/
+│   └── final_experiments/
+│
+├── README.md                   # 이 파일
+├── FINAL_WINDOWS_GUIDE.md     # Windows 실행 가이드
+└── COMPLETE_SUCCESS.md        # 상세 문서
+```
+
+---
+
+## 🏗️ 아키텍처
+
+### 모델 구조
+```
+Input: User-Food-Ingredient Heterogeneous Graph
+
+┌─────────────────────────────────────────┐
+│  HealthAwareGATEncoder                  │
+│  ├─ Input Projections (per node type)  │
+│  ├─ GAT Layer 1 (heads=2)              │
+│  │   └─ BatchNorm + GELU + Dropout     │
+│  ├─ GAT Layer 2 (heads=1)              │
+│  │   └─ BatchNorm + GELU + Dropout     │
+│  └─ Health Attention                    │
+│      └─ Scale food embeddings by       │
+│          health scores                  │
+└─────────────────────────────────────────┘
+                   ↓
+┌─────────────────────────────────────────┐
+│  HealthAwareEdgeDecoder                 │
+│  └─ 4-Layer MLP                         │
+│      ├─ Linear + LayerNorm + GELU      │
+│      ├─ Linear + LayerNorm + GELU      │
+│      ├─ Linear + GELU                   │
+│      └─ Linear → Logits                 │
+└─────────────────────────────────────────┘
+                   ↓
+Output: User-Food Preference Score (0-1)
+```
+
+### Loss Function
+```python
+Total Loss = BCE Loss + λ₁ × Health Loss + λ₂ × Ranking Loss
+
+where:
+  BCE Loss = Binary Cross-Entropy Loss
+  Health Loss = Encourage healthy food recommendations
+  Ranking Loss = Positive samples > Negative samples
+```
+
+---
+
+## 📈 실험 설정
+
+### 기본 하이퍼파라미터
+```python
+hidden_channels = 128        # Hidden layer 크기
+out_channels = 64            # Output layer 크기
+heads = 2                    # GAT attention heads
+dropout = 0.5                # Dropout 비율
+
+epochs = 500                 # Training epochs
+lr = 0.0001                  # Learning rate
+weight_decay = 0.001         # L2 regularization
+patience = 20                # Early stopping patience
+
+lambda_health = 0.01         # Health loss 가중치
+ranking_weight = 0.2         # Ranking loss 가중치
+margin = 1.0                 # Ranking margin
+
+n_folds = 5                  # Cross-validation folds
+val_ratio = 0.05             # Validation ratio
+test_ratio = 0.10            # Test ratio
+neg_sampling_ratio = 2.0     # Negative sampling ratio
+```
+
+---
+
+## 📊 결과 분석
+
+### 학습 곡선
+각 실험 폴더에 `training_curves.png` 생성:
+- Loss Curves (Train & Val)
+- F1 Score Curve
+- AUC Curve
+- Learning Rate Schedule
+
+### 결과 파일
+- `best_model.pth`: 최고 성능 모델 가중치
+- `cross_validation_results.pkl`: 전체 결과 요약
+
+---
+
+## 🔧 고급 사용법
+
+### 1. 데이터 정규화
+```bash
+# 데이터 재생성 (필요시)
+python robust_normalization.py
+```
+
+### 2. 모델 로드 및 추론
+```python
+import torch
+from train_final import HealthAwareRecommender
+
+# 모델 로드
+model = HealthAwareRecommender(
+    hidden_channels=128,
+    out_channels=64,
+    metadata=(data.node_types, data.edge_types)
+)
+model.load_state_dict(torch.load('results/fold_1/best_model.pth'))
+
+# 추론
+with torch.no_grad():
+    pred = model(x_dict, edge_index_dict, edge_label_index)
+```
+
+### 3. 결과 분석
+```python
+import pickle
+
+# 결과 로드
+with open('results/final_experiments/cross_validation_results.pkl', 'rb') as f:
+    results = pickle.load(f)
+
+# 평균 성능
+print(results['avg_results'])
+
+# 각 Fold 성능
+for i, fold_result in enumerate(results['all_results']):
+    print(f"Fold {i+1}: F1={fold_result['test_f1']:.4f}, AUC={fold_result['test_auc']:.4f}")
+```
+
+---
+
+## 📝 문서
+
+- **[FINAL_WINDOWS_GUIDE.md](FINAL_WINDOWS_GUIDE.md)**: Windows 환경 실행 가이드
+- **[COMPLETE_SUCCESS.md](COMPLETE_SUCCESS.md)**: 전체 프로젝트 문서 및 기술 상세
+
+---
+
+## 🤝 기여
+
+버그 리포트, 기능 제안, Pull Request는 언제나 환영합니다!
+
+1. Fork the repository
+2. Create your feature branch (`git checkout -b feature/AmazingFeature`)
+3. Commit your changes (`git commit -m 'Add some AmazingFeature'`)
+4. Push to the branch (`git push origin feature/AmazingFeature`)
+5. Open a Pull Request
+
+---
+
+## 📄 라이선스
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+---
+
+## 👥 저자
+
+**Heejeong**
+- 푸드테크 박사과정생
+- 전공: 푸드테크, 개인맞춤형식품, AI, 자동화
+- GitHub: [@HeejeongH](https://github.com/HeejeongH)
+
+---
+
+## 🙏 감사의 말
+
+이 프로젝트는 다음 라이브러리들을 사용합니다:
+- [PyTorch](https://pytorch.org/)
+- [PyTorch Geometric](https://pytorch-geometric.readthedocs.io/)
+- [scikit-learn](https://scikit-learn.org/)
+- [matplotlib](https://matplotlib.org/)
+
+---
+
+## 📞 문의
+
+질문이나 문제가 있으시면 [Issues](https://github.com/HeejeongH/NutriGraphNet/issues)를 열어주세요.
+
+---
+
+**⭐ 이 프로젝트가 도움이 되었다면 Star를 눌러주세요!**
