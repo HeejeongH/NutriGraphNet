@@ -427,20 +427,27 @@ class LightGCN(nn.Module):
 
     def _propagate(self, train_ei, device):
         src, dst = train_ei[0], train_ei[1]
+        D = self.u_emb.weight.shape[1]
+
         deg_u = torch.zeros(self.num_users, device=device)
         deg_f = torch.zeros(self.num_foods, device=device)
-        ones = torch.ones(src.shape[0], device=device)
+        ones  = torch.ones(src.shape[0], device=device)
         deg_u.scatter_add_(0, src, ones)
         deg_f.scatter_add_(0, dst, ones)
-        norm = 1.0 / ((deg_u[src] * deg_f[dst]).sqrt() + 1e-8)
+        norm = 1.0 / ((deg_u[src] * deg_f[dst]).sqrt() + 1e-8)  # [E]
+
+        # expand indices for 2-D scatter_add: [E] → [E, D]
+        dst_exp = dst.unsqueeze(-1).expand(-1, D)   # [E, D]
+        src_exp = src.unsqueeze(-1).expand(-1, D)   # [E, D]
+        norm_exp = norm.unsqueeze(-1)               # [E, 1]  broadcasts to [E, D]
 
         u_e, f_e = self.u_emb.weight, self.f_emb.weight
         all_u, all_f = [u_e], [f_e]
         for _ in range(self.num_layers):
             new_f = torch.zeros_like(f_e)
-            new_f.scatter_add_(0, dst, u_e[src] * norm.unsqueeze(-1))
+            new_f.scatter_add_(0, dst_exp, u_e[src] * norm_exp)
             new_u = torch.zeros_like(u_e)
-            new_u.scatter_add_(0, src, f_e[dst] * norm.unsqueeze(-1))
+            new_u.scatter_add_(0, src_exp, f_e[dst] * norm_exp)
             u_e, f_e = new_u, new_f
             all_u.append(u_e); all_f.append(f_e)
 
