@@ -985,48 +985,107 @@ def eval_baseline(model, data, criterion, device, model_type='mf',
     return loss.item(), out
 
 
-def _eval_baseline_rank(model, data, device, out_dict, kw, model_type):
-    """Compute ranking metrics for baseline models."""
-    eil = data[('user','eats','food')].edge_label_index.to(device)
-    el  = data[('user','eats','food')].edge_label.to(device)
-    pos_eil = eil[:, el == 1]
-    unique_users = pos_eil[0].unique()[:200]
+def _eval_baseline_rank(model, data, device, out_dict, kw, model_type,
+                        max_users=200, n_neg_sample=100):
+    """
+    Compute ranking metrics for baseline models using Sampled-100 protocol.
 
+    RecSys 논문 표준과 동일한 방식:
+    각 user의 positive food 1개 + random negative 100개 = 101개 후보 중 ranking.
+    NutriGraphNet v2의 ranking_metrics_from_z와 완전히 동일한 프로토콜 적용.
+    """
+    # CPU numpy 처리
+    eil_cpu = data[('user','eats','food')].edge_label_index.cpu()
+    el_cpu  = data[('user','eats','food')].edge_label.cpu()
+    pos_mask_np  = (el_cpu.numpy() == 1)
+    eil_np       = eil_cpu.numpy()
+    pos_users_np = eil_np[0, pos_mask_np]
+    pos_foods_np = eil_np[1, pos_mask_np]
+
+    if pos_users_np.shape[0] == 0:
+        k_list = (5, 10, 20)
+        for k in k_list:
+            out_dict[f'HR@{k}'] = 0.0; out_dict[f'NDCG@{k}'] = 0.0
+        out_dict['MRR'] = 0.0
+        return
+
+    # Get embeddings (detach to avoid grad issues)
     if model_type == 'mf':
-        u_e = model.u_emb.weight
-        f_e = model.f_emb.weight
+        u_e = model.u_emb.weight.detach()
+        f_e = model.f_emb.weight.detach()
     else:  # lightgcn
         if 'train_edge_index' in kw:
             u_e, f_e = model._propagate(kw['train_edge_index'], device)
+            u_e = u_e.detach()
+            f_e = f_e.detach()
         else:
-            u_e, f_e = model.u_emb.weight, model.f_emb.weight
+            u_e, f_e = model.u_emb.weight.detach(), model.f_emb.weight.detach()
 
-    num_foods = data['food'].num_nodes
-    hs = _get_food_health(data, device)
+    num_foods     = data['food'].num_nodes
+    num_users_emb = u_e.shape[0]
+
+    # User sampling
+    unique_users = np.unique(pos_users_np)
+    if len(unique_users) > max_users:
+        perm = np.random.permutation(len(unique_users))[:max_users]
+        unique_users = unique_users[perm]
+
     k_list = (5, 10, 20)
-    hr = {k: [] for k in k_list}
-    ndcg = {k: [] for k in k_list}
+    hr       = {k: [] for k in k_list}
+    ndcg_d   = {k: [] for k in k_list}
+    mrr_vals = []
+    rng = np.random.default_rng(seed=12345)
 
-    for u in unique_users:
-        u_idx = int(u.item()) if hasattr(u, 'item') else int(u)
-        pos_foods = pos_eil[1][pos_eil[0] == u]
-        if len(pos_foods) == 0:
+    for u_idx_raw in unique_users:
+        u_idx = int(u_idx_raw)
+        if u_idx >= num_users_emb:
             continue
-        scores = (u_e[u_idx].unsqueeze(0) * f_e).sum(-1).cpu().float().numpy()
-        sorted_idx = np.argsort(-scores)
-        pos_set = set(int(x) for x in pos_foods.cpu().tolist())
+
+        mask_u      = (pos_users_np == u_idx)
+        pos_foods_u = pos_foods_np[mask_u]
+        pos_foods_u = pos_foods_u[pos_foods_u < num_foods]
+        if pos_foods_u.shape[0] == 0:
+            continue
+        all_pos_set = set(int(f) for f in pos_foods_u)
+
+        # Leave-one-out: target positive 1개 선택
+        target_food = int(rng.choice(pos_foods_u))
+
+        # Negative sampling: 100개 (pos 제외)
+        neg_pool = np.arange(num_foods)
+        neg_pool = neg_pool[~np.isin(neg_pool, list(all_pos_set))]
+        if len(neg_pool) < n_neg_sample:
+            neg_sample = neg_pool
+        else:
+            neg_sample = rng.choice(neg_pool, size=n_neg_sample, replace=False)
+
+        # candidates[0] = target, candidates[1:] = negatives
+        candidates = np.array([target_food] + list(neg_sample), dtype=np.int64)
+
+        # Dot product scores (embedding lookup)
+        cand_t = torch.tensor(candidates, dtype=torch.long, device=device)
+        scores_c = (u_e[u_idx].unsqueeze(0) * f_e[cand_t]).sum(-1).cpu().float().numpy()
+
+        sorted_local = np.argsort(-scores_c)
+        target_local_rank = int(np.where(sorted_local == 0)[0][0]) + 1
+        mrr_vals.append(1.0 / target_local_rank)
 
         for k in k_list:
-            top_k = [int(fi) for fi in sorted_idx[:k]]
-            top_k_set = set(top_k)
-            hr[k].append(1.0 if top_k_set & pos_set else 0.0)
-            dcg = sum(1.0/np.log2(r+2) for r, fi in enumerate(top_k) if fi in pos_set)
-            idcg = sum(1.0/np.log2(i+2) for i in range(min(len(pos_set),k)))
-            ndcg[k].append(dcg/idcg if idcg > 0 else 0.0)
+            top_k_local = sorted_local[:k]
+            hit = 1.0 if 0 in top_k_local else 0.0
+            hr[k].append(hit)
+
+            dcg = 0.0
+            for r, li in enumerate(top_k_local):
+                if li == 0:
+                    dcg = 1.0 / np.log2(r + 2)
+                    break
+            ndcg_d[k].append(dcg / 1.0)  # idcg = 1.0
 
     for k in k_list:
-        out_dict[f'HR@{k}']   = float(np.mean(hr[k]))   if hr[k]   else 0.0
-        out_dict[f'NDCG@{k}'] = float(np.mean(ndcg[k])) if ndcg[k] else 0.0
+        out_dict[f'HR@{k}']   = float(np.mean(hr[k]))     if hr[k]     else 0.0
+        out_dict[f'NDCG@{k}'] = float(np.mean(ndcg_d[k])) if ndcg_d[k] else 0.0
+    out_dict['MRR'] = float(np.mean(mrr_vals)) if mrr_vals else 0.0
 
 
 # ============================================================================
@@ -1384,9 +1443,14 @@ def plot_training_curves(all_results, output_dir):
 # 10. LATEX TABLE GENERATION
 # ============================================================================
 
-def generate_latex_table(all_results, output_dir):
-    """Table 2 in paper: main results comparison."""
-    key_metrics = ['auc', 'ap', 'f1', 'precision', 'recall',
+def generate_latex_table(all_results, output_dir, sig_results=None):
+    """
+    Table 2 in paper: main results comparison.
+    - Best values bolded
+    - Significance stars (* p<0.05, ** p<0.01) vs NutriGraphNet v2 Full
+    - Second-best underlined
+    """
+    key_metrics = ['auc', 'ap', 'f1',
                    'HR@5', 'HR@10', 'HR@20',
                    'NDCG@5', 'NDCG@10', 'NDCG@20',
                    'MRR', 'HealthGain@5', 'HealthGain@10']
@@ -1395,34 +1459,41 @@ def generate_latex_table(all_results, output_dir):
     names = {
         'mf':        'MF',
         'lightgcn':  'LightGCN',
-        'no_dual':   'NGN$_{-D}$',
-        'no_health': 'NGN$_{-H}$',
-        'no_cl':     'NGN$_{-CL}$',
+        'no_dual':   r'NGN$_{\text{-D}}$',
+        'no_health': r'NGN$_{\text{-H}}$',
+        'no_cl':     r'NGN$_{\text{-CL}}$',
         'full':      r'\textbf{NutriGraphNet v2}',
     }
 
-    # Best per metric
-    best = {}
+    # Best and 2nd-best per metric
+    best = {}; second = {}
     for m in key_metrics:
-        bv = -999
+        vals = []
         for v in order:
             if v in all_results:
                 agg = all_results[v]['aggregated']
-                if m in agg and agg[m]['mean'] > bv:
-                    bv = agg[m]['mean']
-                    best[m] = bv
+                if m in agg:
+                    vals.append((agg[m]['mean'], v))
+        vals.sort(reverse=True)
+        if vals:
+            best[m]   = vals[0][0]
+            second[m] = vals[1][0] if len(vals) > 1 else -999
 
     lines = [
         r'\begin{table*}[t]',
         r'\centering',
-        r'\caption{Performance Comparison (mean $\pm$ std, 5-fold CV). '
-        r'Best results in \textbf{bold}.}',
+        r'\caption{Performance Comparison on NutriGraphNet Benchmark '
+        r'(mean $\pm$ std over 5-fold CV, Sampled-100 evaluation protocol). '
+        r'\textbf{Bold}: best. \underline{Underline}: second-best. '
+        r'$^*$/$^{**}$: Wilcoxon $p<0.05/0.01$ vs full model.}',
         r'\label{tab:main_results}',
         r'\resizebox{\textwidth}{!}{%',
-        r'\begin{tabular}{l' + 'c' * len(key_metrics) + '}',
+        r'\begin{tabular}{l' + 'r' * len(key_metrics) + '}',
         r'\toprule',
-        'Model & ' + ' & '.join(m.replace('@', r'@').replace('_', r'\_')
-                                 for m in key_metrics) + r' \\',
+        r'Model & ' + ' & '.join(
+            m.replace('@', r'@').replace('_', r'\_').replace('HealthGain', r'HGain')
+            for m in key_metrics
+        ) + r' \\',
         r'\midrule',
     ]
 
@@ -1435,8 +1506,19 @@ def generate_latex_table(all_results, output_dir):
             if m in agg:
                 mu, sd = agg[m]['mean'], agg[m]['std']
                 cell = f"{mu:.4f}$\\pm${sd:.4f}"
+                # Bold if best
                 if m in best and abs(mu - best[m]) < 1e-5:
                     cell = r'\textbf{' + cell + '}'
+                # Underline if 2nd best
+                elif m in second and abs(mu - second[m]) < 1e-5:
+                    cell = r'\underline{' + cell + '}'
+                # Significance stars (for non-full models vs full)
+                if v != 'full' and sig_results and v in sig_results:
+                    vm = sig_results[v].get(m, {})
+                    if vm.get('sig_01'):
+                        cell += r'$^{**}$'
+                    elif vm.get('sig'):
+                        cell += r'$^*$'
                 row.append(cell)
             else:
                 row.append('--')
@@ -1453,13 +1535,19 @@ def generate_latex_table(all_results, output_dir):
 
 
 # ============================================================================
-# 11. SIGNIFICANCE TEST
+# 11. SIGNIFICANCE TEST + LAMBDA SWEEP PLOT
 # ============================================================================
 
 def significance_test(all_results, proposed='full'):
+    """
+    Wilcoxon signed-rank test (one-tailed): proposed > baseline.
+    Returns p-values + delta for all metrics, prints LaTeX-friendly table.
+    """
     if not HAS_SCIPY or proposed not in all_results:
         return {}
 
+    metrics_to_test = ['auc', 'f1', 'HR@5', 'HR@10', 'HR@20',
+                       'NDCG@5', 'NDCG@10', 'NDCG@20', 'MRR']
     results = {}
     for baseline, bres in all_results.items():
         if baseline == proposed:
@@ -1468,18 +1556,124 @@ def significance_test(all_results, proposed='full'):
         bfolds = bres['fold_results']
 
         row = {}
-        for metric in ['auc', 'f1', 'NDCG@10', 'HR@10']:
+        for metric in metrics_to_test:
             pv = [r.get(metric, 0.0) for r in pfolds]
             bv = [r.get(metric, 0.0) for r in bfolds]
             if len(pv) >= 3 and len(pv) == len(bv):
                 try:
+                    # Check non-zero variance
+                    diffs = [p - b for p, b in zip(pv, bv)]
+                    if all(d == 0 for d in diffs):
+                        row[metric] = {'p': 1.0, 'sig': False,
+                                       'delta': 0.0}
+                        continue
                     stat, p = wilcoxon(pv, bv, alternative='greater')
-                    row[metric] = {'p': float(p), 'sig': p < 0.05,
-                                   'delta': float(np.mean(pv) - np.mean(bv))}
+                    row[metric] = {
+                        'p': float(p),
+                        'sig': p < 0.05,
+                        'sig_01': p < 0.01,
+                        'delta': float(np.mean(pv) - np.mean(bv))
+                    }
                 except Exception:
                     pass
         results[baseline] = row
     return results
+
+
+def _plot_lambda_sweep(sweep_results: dict, output_dir: str):
+    """
+    Plot health-accuracy trade-off across lambda_health values.
+    논문 Figure: lambda_health sensitivity analysis.
+    """
+    lambdas = sorted(sweep_results.keys())
+    hr10  = [sweep_results[l]['HR@10']   for l in lambdas]
+    nd10  = [sweep_results[l]['NDCG@10'] for l in lambdas]
+    mrr   = [sweep_results[l]['MRR']     for l in lambdas]
+    hg10  = [sweep_results[l].get('HealthGain@10', 0) for l in lambdas]
+
+    fig, axes = plt.subplots(1, 2, figsize=(12, 5))
+
+    # Left: Recommendation accuracy vs lambda
+    ax = axes[0]
+    ax.semilogx(lambdas, hr10,  'o-', color='steelblue',   lw=2, ms=7, label='HR@10')
+    ax.semilogx(lambdas, nd10,  's-', color='darkorange',  lw=2, ms=7, label='NDCG@10')
+    ax.semilogx(lambdas, mrr,   '^-', color='seagreen',    lw=2, ms=7, label='MRR')
+    ax.set_xlabel(r'$\lambda_h$ (log scale)', fontsize=12)
+    ax.set_ylabel('Recommendation Metric', fontsize=12)
+    ax.set_title(r'Rec. Accuracy vs $\lambda_h$', fontweight='bold', fontsize=13)
+    ax.legend(fontsize=10)
+    ax.grid(True, alpha=0.3)
+
+    # Right: Health gain vs lambda
+    ax = axes[1]
+    ax.semilogx(lambdas, hg10,  'D-', color='crimson', lw=2, ms=7, label='HealthGain@10')
+    ax.set_xlabel(r'$\lambda_h$ (log scale)', fontsize=12)
+    ax.set_ylabel('Health Gain', fontsize=12)
+    ax.set_title(r'Health Gain vs $\lambda_h$', fontweight='bold', fontsize=13)
+    ax.legend(fontsize=10)
+    ax.grid(True, alpha=0.3)
+
+    plt.suptitle(r'Health-Accuracy Trade-off ($\lambda_h$ Sensitivity)',
+                 fontsize=14, fontweight='bold')
+    plt.tight_layout()
+    _save_fig(fig, output_dir, 'lambda_health_sensitivity')
+    print("  Saved: lambda_health_sensitivity.{png,pdf}")
+
+
+def plot_ablation_comparison(all_results, output_dir):
+    """
+    Grouped bar chart for ablation study.
+    논문 Figure: ablation bar chart (HR@10, NDCG@10, MRR).
+    """
+    order   = ['mf', 'lightgcn', 'no_dual', 'no_health', 'no_cl', 'full']
+    labels  = {
+        'mf':        'MF', 'lightgcn': 'LightGCN',
+        'no_dual':   'NGN-D', 'no_health': 'NGN-H',
+        'no_cl':     'NGN-CL', 'full': 'NutriGraphNet\nv2 (Full)',
+    }
+    present = [v for v in order if v in all_results]
+    if not present:
+        return
+
+    metrics = [('HR@10', 'HR@10'), ('NDCG@10', 'NDCG@10'), ('MRR', 'MRR')]
+    n_models  = len(present)
+    n_metrics = len(metrics)
+    x  = np.arange(n_models)
+    w  = 0.22
+    colors = ['#4878CF', '#6ACC65', '#D65F5F']
+
+    fig, ax = plt.subplots(figsize=(max(8, 1.8*n_models), 5))
+    offsets = np.linspace(-(n_metrics-1)*w/2, (n_metrics-1)*w/2, n_metrics)
+
+    for i, (mkey, mlabel) in enumerate(metrics):
+        means = [all_results[v]['aggregated'].get(mkey, {}).get('mean', 0) for v in present]
+        stds  = [all_results[v]['aggregated'].get(mkey, {}).get('std',  0) for v in present]
+        bars  = ax.bar(x + offsets[i], means, w, yerr=stds, label=mlabel,
+                       color=colors[i], capsize=4, alpha=0.87, edgecolor='black', lw=0.6)
+        # Annotate top values
+        for bar, mu in zip(bars, means):
+            if mu > 0:
+                ax.text(bar.get_x() + bar.get_width()/2,
+                        bar.get_height() + 0.008,
+                        f'{mu:.3f}', ha='center', va='bottom', fontsize=7.5, rotation=45)
+
+    ax.set_xticks(x)
+    ax.set_xticklabels([labels[v] for v in present], fontsize=10)
+    ax.set_ylabel('Score', fontsize=12)
+    ax.set_ylim(0, ax.get_ylim()[1] * 1.15)
+    ax.set_title('Ablation Study — NutriGraphNet v2', fontweight='bold', fontsize=13)
+    ax.legend(fontsize=10, loc='upper left')
+    ax.grid(axis='y', alpha=0.3)
+
+    # Highlight full model column
+    full_idx = present.index('full') if 'full' in present else -1
+    if full_idx >= 0:
+        ax.axvspan(full_idx - 0.4, full_idx + 0.4, alpha=0.08, color='gold',
+                   label='_nolegend_')
+
+    plt.tight_layout()
+    _save_fig(fig, output_dir, 'ablation_comparison')
+    print("  Saved: ablation_comparison.{png,pdf}")
 
 
 # ============================================================================
@@ -1518,6 +1712,11 @@ def main():
     parser.add_argument('--print_every',     type=int, default=20)
     parser.add_argument('--variants',        default='full',
                         help='comma-sep: full,no_health,no_cl,no_dual,mf,lightgcn')
+    # Lambda sweep (for sensitivity analysis)
+    parser.add_argument('--lambda_sweep',    action='store_true',
+                        help='Run lambda_health sensitivity sweep (0.001~1.0)')
+    parser.add_argument('--sweep_values',    default='0.001,0.01,0.05,0.1,0.2,0.5',
+                        help='comma-sep lambda_health values for sweep')
     args = parser.parse_args()
 
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -1564,21 +1763,67 @@ def main():
     print("\nGenerating figures...")
     if len(all_results) > 1:
         plot_model_comparison(all_results, args.output_dir)
+        plot_ablation_comparison(all_results, args.output_dir)
     plot_training_curves(all_results, args.output_dir)
+
+    # ── Significance test ──
+    sig = {}
+    if 'full' in all_results and len(all_results) > 1:
+        print("\nStatistical Significance (Wilcoxon signed-rank, one-tailed: full > baseline):")
+        print(f"{'Baseline':<15} {'Metric':<12} {'Δ':>8} {'p-val':>8} {'sig':>5}")
+        print("-" * 55)
+        sig = significance_test(all_results, proposed='full')
+        for baseline, rows in sig.items():
+            for metric, v in rows.items():
+                stars = ''
+                if v.get('sig_01'):    stars = '**'
+                elif v.get('sig'):     stars = '*'
+                print(f"  vs {baseline:<12} {metric:<12} "
+                      f"{v['delta']:>+8.4f} {v['p']:>8.4f} {stars:>5}")
+
+        # Save significance results
+        with open(f"{args.output_dir}/significance_test.json", 'w') as f:
+            json.dump(sig, f, indent=2)
 
     # ── LaTeX table ──
     print("Generating LaTeX table...")
-    generate_latex_table(all_results, args.output_dir)
+    generate_latex_table(all_results, args.output_dir, sig_results=sig)
 
-    # ── Significance test ──
-    if 'full' in all_results and len(all_results) > 1:
-        print("\nStatistical Significance (Wilcoxon, one-tailed):")
-        sig = significance_test(all_results, proposed='full')
-        for baseline, rows in sig.items():
-            print(f"  NutriGraphNetV2 vs {baseline}:")
-            for metric, v in rows.items():
-                star = '*' if v['sig'] else ''
-                print(f"    {metric:15s}: Δ={v['delta']:+.4f}, p={v['p']:.4f} {star}")
+    # ── Lambda sweep ──
+    if args.lambda_sweep:
+        print("\n" + "="*70)
+        print("  Lambda_health Sensitivity Sweep")
+        print("="*70)
+        sweep_vals = [float(x) for x in args.sweep_values.split(',')]
+        sweep_results = {}
+        for lh_val in sweep_vals:
+            print(f"\n  [sweep] lambda_health = {lh_val}")
+            args.lambda_health = lh_val
+            sv_key = f'full_lh{lh_val}'
+            res = run_cross_validation(data, args, device, 'full')
+            # Tag result with lambda value
+            sweep_results[lh_val] = {
+                'HR@10':   res['aggregated'].get('HR@10', {}).get('mean', 0),
+                'NDCG@10': res['aggregated'].get('NDCG@10', {}).get('mean', 0),
+                'MRR':     res['aggregated'].get('MRR', {}).get('mean', 0),
+                'auc':     res['aggregated'].get('auc', {}).get('mean', 0),
+                'HealthGain@10': res['aggregated'].get('HealthGain@10', {}).get('mean', 0),
+            }
+            with open(f"{args.output_dir}/sweep_lh{lh_val}.json", 'w') as f:
+                json.dump({'lambda_health': lh_val,
+                           'aggregated': res['aggregated'],
+                           'fold_results': res['fold_results']}, f, indent=2)
+            gc_collect()
+
+        # Plot sweep results
+        _plot_lambda_sweep(sweep_results, args.output_dir)
+        with open(f"{args.output_dir}/lambda_sweep_summary.json", 'w') as f:
+            json.dump({str(k): v for k, v in sweep_results.items()}, f, indent=2)
+        print("\n  Lambda sweep summary:")
+        print(f"  {'lambda_h':>12} {'HR@10':>8} {'NDCG@10':>10} {'MRR':>8} {'HG@10':>10}")
+        for lh_val, sv in sweep_results.items():
+            print(f"  {lh_val:>12.4f} {sv['HR@10']:>8.4f} {sv['NDCG@10']:>10.4f} "
+                  f"{sv['MRR']:>8.4f} {sv.get('HealthGain@10', 0):>10.4f}")
 
     # ── Summary table ──
     key_m = ['auc', 'f1', 'HR@10', 'NDCG@10', 'MRR', 'HealthGain@10']
@@ -1594,7 +1839,7 @@ def main():
         row = f"{v:<20}"
         for m in key_m:
             if m in agg:
-                row += f"{agg[m]['mean']:>10.4f}±{agg[m]['std']:.3f}  "
+                row += f"{agg[m]['mean']:>10.4f}\u00b1{agg[m]['std']:.3f}  "
             else:
                 row += f"{'--':>18}"
         print(row)
