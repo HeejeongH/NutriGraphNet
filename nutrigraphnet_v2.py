@@ -595,24 +595,24 @@ def ranking_metrics(model, data, device, k_list=(5, 10, 20), max_users=300):
             scores = model.decoder(z_dict, torch.stack([u_t, f_t])).cpu().numpy()
 
             sorted_idx = np.argsort(-scores)
-            pos_set = set(pos_foods.cpu().tolist())
+            pos_set = set(int(x) for x in pos_foods.cpu().tolist())  # Python int set
 
             # MRR
             for rank, fi in enumerate(sorted_idx):
-                if fi in pos_set:
+                if int(fi) in pos_set:
                     mrr_vals.append(1.0 / (rank + 1))
                     break
 
             for k in k_list:
-                top_k = sorted_idx[:k]
-                hits = sum(fi in pos_set for fi in top_k)
+                top_k_list = [int(fi) for fi in sorted_idx[:k]]  # Python int list
+                top_k_set  = set(top_k_list)
 
                 # HR@K
-                hr[k].append(float(hits > 0))
+                hr[k].append(1.0 if len(top_k_set & pos_set) > 0 else 0.0)
 
-                # NDCG@K (manual calculation, no ndcg_score dependency)
+                # NDCG@K
                 dcg = 0.0
-                for rank, fi in enumerate(top_k):
+                for rank, fi in enumerate(top_k_list):
                     if fi in pos_set:
                         dcg += 1.0 / np.log2(rank + 2)
                 ideal_len = min(len(pos_set), k)
@@ -621,7 +621,7 @@ def ranking_metrics(model, data, device, k_list=(5, 10, 20), max_users=300):
 
                 # HealthGain@K
                 if health_scores is not None:
-                    avg_topk = health_scores[top_k].mean().item()
+                    avg_topk = health_scores[top_k_list].mean().item()
                     avg_all  = health_scores.mean().item()
                     hg[k].append(avg_topk - avg_all)
 
@@ -638,67 +638,120 @@ def ranking_metrics(model, data, device, k_list=(5, 10, 20), max_users=300):
 def ranking_metrics_from_z(z_dict, decoder, data, device, health_scores=None,
                            k_list=(5, 10, 20), max_users=200):
     """
-    Compute ranking metrics from pre-computed embeddings.
-    Memory-efficient: score foods in batches.
+    Compute HR@K, NDCG@K, MRR, HealthGain@K from pre-computed embeddings.
+
+    핵심 로직:
+    - test edge_label_index에서 positive (label==1) 엣지만 정답으로 사용
+    - 각 사용자에 대해 전체 음식 스코어링 후 랭킹
+    - 정답 음식이 상위 K개 안에 들어오는 비율 계산
+
+    버그 수정 (v2.1):
+    - pos_eil을 완전히 CPU numpy로 변환 후 처리 (GPU tensor 인덱싱 문제 해결)
+    - pos_set 원소를 int()로 명시 변환 (numpy int64 vs Python int 불일치 해결)
+    - u_emb 인덱싱 시 u_idx (Python int) 사용
+    - f_emb 범위 초과 방지 (num_foods 경계 검사)
     """
-    eil = data[('user', 'eats', 'food')].edge_label_index.to(device)
-    el  = data[('user', 'eats', 'food')].edge_label.to(device)
+    # ── 1. Edge label 정보를 CPU numpy로 통일 ──────────────────────────────────
+    eil_cpu = data[('user', 'eats', 'food')].edge_label_index.cpu()  # [2, E]
+    el_cpu  = data[('user', 'eats', 'food')].edge_label.cpu()         # [E]
 
-    pos_eil = eil[:, el == 1]
-    unique_users = pos_eil[0].unique()
+    pos_mask_np = (el_cpu.numpy() == 1)
+    eil_np = eil_cpu.numpy()                      # shape [2, E]
+    pos_users_np = eil_np[0, pos_mask_np]         # user indices of positives
+    pos_foods_np = eil_np[1, pos_mask_np]         # food indices of positives
+
+    if pos_users_np.shape[0] == 0:
+        out = {}
+        for k in k_list:
+            out[f'HR@{k}']   = 0.0
+            out[f'NDCG@{k}'] = 0.0
+        out['MRR'] = 0.0
+        return out
+
+    # ── 2. 사용자 샘플링 (CPU numpy) ───────────────────────────────────────────
+    unique_users = np.unique(pos_users_np)          # sorted unique user indices
     if len(unique_users) > max_users:
-        idx = torch.randperm(len(unique_users))[:max_users]
-        unique_users = unique_users[idx]
+        perm = np.random.permutation(len(unique_users))[:max_users]
+        unique_users = unique_users[perm]
 
-    num_foods = data['food'].num_nodes
+    # ── 3. Embedding을 CPU numpy로 변환 ────────────────────────────────────────
+    # z_dict 값은 GPU/CPU tensor일 수 있음 → detach().cpu().numpy()로 통일
+    f_emb_np = z_dict['food'].detach().cpu().float().numpy()  # [num_foods, D]
+    u_emb_np = z_dict['user'].detach().cpu().float().numpy()  # [num_users, D]
 
-    hr   = {k: [] for k in k_list}
-    ndcg = {k: [] for k in k_list}
-    hg   = {k: [] for k in k_list}
+    num_foods, D = f_emb_np.shape
+    num_users_emb = u_emb_np.shape[0]
+
+    # health scores CPU numpy
+    if health_scores is not None:
+        hs_np = health_scores.detach().cpu().float().numpy()  # [num_foods]
+        hs_mean = float(hs_np.mean())
+    else:
+        hs_np = None
+        hs_mean = 0.0
+
+    # ── 4. 사용자별 ranking 계산 ───────────────────────────────────────────────
+    hr       = {k: [] for k in k_list}
+    ndcg_d   = {k: [] for k in k_list}
+    hg       = {k: [] for k in k_list}
     mrr_vals = []
 
-    f_emb = z_dict['food']   # [F, D]
-    u_emb = z_dict['user']   # [U, D]
+    for u_idx in unique_users:
+        u_idx = int(u_idx)  # numpy int64 → Python int (인덱싱 안전)
 
-    for u in unique_users:
-        pos_foods = pos_eil[1][pos_eil[0] == u]
-        if len(pos_foods) == 0:
+        # 범위 초과 방지
+        if u_idx >= num_users_emb:
             continue
 
-        # Vectorized scoring using decoder components (dot product fallback)
-        u_vec = u_emb[u].unsqueeze(0)     # [1, D]
-        scores = (u_vec * f_emb).sum(-1).cpu().numpy()  # [F]
+        # 이 사용자의 positive 음식 집합 (Python int set)
+        mask_u   = (pos_users_np == u_idx)
+        pos_foods_u = pos_foods_np[mask_u]
+        if pos_foods_u.shape[0] == 0:
+            continue
+        # food 인덱스도 범위 클리핑 후 set 생성
+        pos_foods_u = pos_foods_u[pos_foods_u < num_foods]
+        if pos_foods_u.shape[0] == 0:
+            continue
+        pos_set = set(int(f) for f in pos_foods_u)  # Python int set
 
-        sorted_idx = np.argsort(-scores)
-        pos_set = set(pos_foods.cpu().tolist())
+        # 전체 음식 스코어: dot product
+        u_vec  = u_emb_np[u_idx]                          # [D]
+        scores = f_emb_np.dot(u_vec)                      # [num_foods] — 빠른 BLAS matmul
 
+        sorted_idx = np.argsort(-scores)                  # 내림차순 인덱스 (numpy int64)
+
+        # MRR: 첫 번째 hit 위치
         for rank, fi in enumerate(sorted_idx):
-            if fi in pos_set:
+            if int(fi) in pos_set:
                 mrr_vals.append(1.0 / (rank + 1))
                 break
 
         for k in k_list:
-            top_k = sorted_idx[:k]
-            hits = sum(fi in pos_set for fi in top_k)
-            hr[k].append(float(hits > 0))
+            top_k_idx = [int(fi) for fi in sorted_idx[:k]]  # Python int list
+            top_k_set = set(top_k_idx)
 
+            # HR@K
+            hr[k].append(1.0 if len(top_k_set & pos_set) > 0 else 0.0)
+
+            # NDCG@K
             dcg = 0.0
-            for rank, fi in enumerate(top_k):
+            for rank, fi in enumerate(top_k_idx):
                 if fi in pos_set:
                     dcg += 1.0 / np.log2(rank + 2)
             ideal_len = min(len(pos_set), k)
             idcg = sum(1.0 / np.log2(i + 2) for i in range(ideal_len))
-            ndcg[k].append(dcg / idcg if idcg > 0 else 0.0)
+            ndcg_d[k].append(dcg / idcg if idcg > 0 else 0.0)
 
-            if health_scores is not None:
-                avg_topk = health_scores[top_k].cpu().mean().item()
-                avg_all  = health_scores.cpu().mean().item()
-                hg[k].append(avg_topk - avg_all)
+            # HealthGain@K
+            if hs_np is not None:
+                topk_health = float(hs_np[top_k_idx].mean())
+                hg[k].append(topk_health - hs_mean)
 
+    # ── 5. 집계 ────────────────────────────────────────────────────────────────
     out = {}
     for k in k_list:
-        out[f'HR@{k}']   = float(np.mean(hr[k]))   if hr[k]   else 0.0
-        out[f'NDCG@{k}'] = float(np.mean(ndcg[k])) if ndcg[k] else 0.0
+        out[f'HR@{k}']   = float(np.mean(hr[k]))     if hr[k]     else 0.0
+        out[f'NDCG@{k}'] = float(np.mean(ndcg_d[k])) if ndcg_d[k] else 0.0
         if hg[k]:
             out[f'HealthGain@{k}'] = float(np.mean(hg[k]))
     out['MRR'] = float(np.mean(mrr_vals)) if mrr_vals else 0.0
