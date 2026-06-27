@@ -31,6 +31,7 @@ import argparse
 import json
 import time
 from pathlib import Path
+
 from typing import Dict, Tuple, List, Optional, Union
 import warnings
 warnings.filterwarnings('ignore')
@@ -39,6 +40,20 @@ import numpy as np
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
+
+
+class _NumpyEncoder(json.JSONEncoder):
+    """JSON encoder that handles numpy scalars, booleans, and arrays."""
+    def default(self, obj):
+        if isinstance(obj, np.integer):
+            return int(obj)
+        if isinstance(obj, np.floating):
+            return float(obj)
+        if isinstance(obj, np.bool_):
+            return bool(obj)
+        if isinstance(obj, np.ndarray):
+            return obj.tolist()
+        return super().default(obj)
 
 import torch
 import torch.nn as nn
@@ -1570,8 +1585,8 @@ def significance_test(all_results, proposed='full'):
                     stat, p = wilcoxon(pv, bv, alternative='greater')
                     row[metric] = {
                         'p': float(p),
-                        'sig': p < 0.05,
-                        'sig_01': p < 0.01,
+                        'sig': bool(p < 0.05),
+                        'sig_01': bool(p < 0.01),
                         'delta': float(np.mean(pv) - np.mean(bv))
                     }
                 except Exception:
@@ -1750,14 +1765,16 @@ def main():
         with open(f"{args.output_dir}/results_{variant}.json", 'w') as f:
             json.dump({'variant': variant,
                        'aggregated': res['aggregated'],
-                       'fold_results': res['fold_results']}, f, indent=2)
+                       'fold_results': res['fold_results']}, f, indent=2,
+                      cls=_NumpyEncoder)
         gc_collect()
 
     # Save all
     with open(f"{args.output_dir}/all_results.json", 'w') as f:
         json.dump({v: {'aggregated': r['aggregated'],
                        'fold_results': r['fold_results']}
-                   for v, r in all_results.items()}, f, indent=2)
+                   for v, r in all_results.items()}, f, indent=2,
+                  cls=_NumpyEncoder)
 
     # ── Visualize ──
     print("\nGenerating figures...")
@@ -1783,7 +1800,7 @@ def main():
 
         # Save significance results
         with open(f"{args.output_dir}/significance_test.json", 'w') as f:
-            json.dump(sig, f, indent=2)
+            json.dump(sig, f, indent=2, cls=_NumpyEncoder)
 
     # ── LaTeX table ──
     print("Generating LaTeX table...")
@@ -1812,13 +1829,15 @@ def main():
             with open(f"{args.output_dir}/sweep_lh{lh_val}.json", 'w') as f:
                 json.dump({'lambda_health': lh_val,
                            'aggregated': res['aggregated'],
-                           'fold_results': res['fold_results']}, f, indent=2)
+                           'fold_results': res['fold_results']}, f, indent=2,
+                          cls=_NumpyEncoder)
             gc_collect()
 
         # Plot sweep results
         _plot_lambda_sweep(sweep_results, args.output_dir)
         with open(f"{args.output_dir}/lambda_sweep_summary.json", 'w') as f:
-            json.dump({str(k): v for k, v in sweep_results.items()}, f, indent=2)
+            json.dump({str(k): v for k, v in sweep_results.items()}, f, indent=2,
+                      cls=_NumpyEncoder)
         print("\n  Lambda sweep summary:")
         print(f"  {'lambda_h':>12} {'HR@10':>8} {'NDCG@10':>10} {'MRR':>8} {'HG@10':>10}")
         for lh_val, sv in sweep_results.items():
