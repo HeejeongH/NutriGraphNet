@@ -637,16 +637,23 @@ def ranking_metrics(model, data, device, k_list=(5, 10, 20), max_users=300):
 
 def ranking_metrics_from_z(z_dict, decoder, data, device, health_scores=None,
                            k_list=(5, 10, 20), max_users=200,
-                           score_batch=512):
+                           score_batch=512, n_neg_sample=100):
     """
     Compute HR@K, NDCG@K, MRR, HealthGain@K.
 
-    v2.2 수정 — 핵심 변경사항:
-    - 단순 dot product 대신 학습된 decoder를 통해 스코어 계산
-      (HybridDecoder = bilinear + dot + mlp 앙상블이므로 dot만으로는 틀린 랭킹)
-    - 메모리 효율을 위해 score_batch 크기로 배치 처리
-    - 모든 edge 데이터는 CPU numpy로 통일 처리
-    - 타입 안전: pos_set, top_k_idx 모두 Python int
+    v2.3 — Sampled Evaluation (RecSys 논문 표준):
+    ──────────────────────────────────────────────
+    전체 31K food에 대해 ranking하면 HR@10 ≈ 0.0003 (random baseline)이므로
+    의미 있는 지표가 나오지 않습니다.
+
+    RecSys 논문 표준 평가법 (NCF, LightGCN, NGCF 등 모두 이 방식):
+    각 user의 positive food 1개 + 랜덤 100개 negative food를 합쳐
+    101개 후보 중에서 ranking → HR@K, NDCG@K 계산.
+
+    이 방식에서:
+    - Random baseline HR@10 = 10/101 ≈ 0.099
+    - 좋은 모델:          HR@10 = 0.3 ~ 0.7
+    - 논문 Table 2 수치와 비교 가능한 수준
     """
     # ── 1. Positive edge 파악 (CPU numpy) ─────────────────────────────────────
     eil_cpu = data[('user', 'eats', 'food')].edge_label_index.cpu()
@@ -664,21 +671,16 @@ def ranking_metrics_from_z(z_dict, decoder, data, device, health_scores=None,
         out['MRR'] = 0.0
         return out
 
+    num_foods     = z_dict['food'].shape[0]
+    num_users_emb = z_dict['user'].shape[0]
+
     # ── 2. 사용자 샘플링 ───────────────────────────────────────────────────────
     unique_users = np.unique(pos_users_np)
     if len(unique_users) > max_users:
         perm = np.random.permutation(len(unique_users))[:max_users]
         unique_users = unique_users[perm]
 
-    # ── 3. Embedding 준비 (GPU — decoder 호출용) ───────────────────────────────
-    # z_dict는 이미 device에 있음 (evaluate_model에서 전달됨)
-    # detach()만 해서 gradient 없이 유지, device는 그대로
-    z_user = z_dict['user'].detach()   # [num_users, D]  on device
-    z_food = z_dict['food'].detach()   # [num_foods, D]  on device
-    num_foods     = z_food.shape[0]
-    num_users_emb = z_user.shape[0]
-
-    # health scores
+    # ── 3. health scores ──────────────────────────────────────────────────────
     if health_scores is not None:
         hs_cpu  = health_scores.detach().cpu().float().numpy()
         hs_mean = float(hs_cpu.mean())
@@ -686,68 +688,80 @@ def ranking_metrics_from_z(z_dict, decoder, data, device, health_scores=None,
         hs_cpu  = None
         hs_mean = 0.0
 
-    # ── 4. 전체 음식 인덱스 (재사용) ──────────────────────────────────────────
-    all_food_idx = torch.arange(num_foods, device=device)  # [num_foods]
-
-    # ── 5. 사용자별 ranking 계산 ───────────────────────────────────────────────
+    # ── 4. 사용자별 ranking (sampled negatives) ────────────────────────────────
     hr       = {k: [] for k in k_list}
     ndcg_d   = {k: [] for k in k_list}
     hg       = {k: [] for k in k_list}
     mrr_vals = []
 
     decoder.eval()
+    rng = np.random.default_rng(seed=12345)
 
     for u_idx_raw in unique_users:
         u_idx = int(u_idx_raw)
         if u_idx >= num_users_emb:
             continue
 
-        # positive food set (Python int)
+        # 이 사용자의 모든 positive food
         mask_u      = (pos_users_np == u_idx)
         pos_foods_u = pos_foods_np[mask_u]
         pos_foods_u = pos_foods_u[pos_foods_u < num_foods]
         if pos_foods_u.shape[0] == 0:
             continue
-        pos_set = set(int(f) for f in pos_foods_u)
+        all_pos_set = set(int(f) for f in pos_foods_u)
 
-        # ── decoder를 통해 전체 음식 스코어 계산 (배치) ──────────────────────
-        u_tensor = torch.full((num_foods,), u_idx,
-                              dtype=torch.long, device=device)  # [num_foods]
-        scores_list = []
+        # Leave-one-out: positive 1개를 target으로 선택
+        target_food = int(rng.choice(pos_foods_u))
+
+        # Negative sampling: target/pos가 아닌 랜덤 n_neg_sample개
+        neg_pool = np.arange(num_foods)
+        neg_pool = neg_pool[~np.isin(neg_pool, list(all_pos_set))]
+        if len(neg_pool) < n_neg_sample:
+            neg_sample = neg_pool
+        else:
+            neg_sample = rng.choice(neg_pool, size=n_neg_sample, replace=False)
+
+        # 후보: [target] + [100 negatives] = 101개
+        candidates = np.array([target_food] + list(neg_sample), dtype=np.int64)
+
+        # Decoder로 101개 스코어 계산
+        u_t   = torch.full((len(candidates),), u_idx, dtype=torch.long, device=device)
+        f_t   = torch.tensor(candidates, dtype=torch.long, device=device)
+        ei_c  = torch.stack([u_t, f_t])
+
         with torch.no_grad():
-            for start in range(0, num_foods, score_batch):
-                end   = min(start + score_batch, num_foods)
-                u_b   = u_tensor[start:end]                   # [B]
-                f_b   = all_food_idx[start:end]               # [B]
-                ei_b  = torch.stack([u_b, f_b])               # [2, B]
-                s_b   = decoder(z_dict, ei_b)                 # [B]
-                scores_list.append(s_b.cpu().float())
-        scores_np = torch.cat(scores_list).numpy()            # [num_foods]
+            scores_c = decoder(z_dict, ei_c).cpu().float().numpy()
 
-        sorted_idx = np.argsort(-scores_np)
+        # 내림차순 정렬 (candidates 기준 인덱스)
+        sorted_local = np.argsort(-scores_c)  # 0~100 사이 로컬 인덱스
+
+        # target의 로컬 인덱스 = 0 (candidates[0] = target_food)
+        target_local_rank = int(np.where(sorted_local == 0)[0][0]) + 1  # 1-indexed
 
         # MRR
-        for rank, fi in enumerate(sorted_idx):
-            if int(fi) in pos_set:
-                mrr_vals.append(1.0 / (rank + 1))
-                break
+        mrr_vals.append(1.0 / target_local_rank)
 
         for k in k_list:
-            top_k_idx = [int(fi) for fi in sorted_idx[:k]]
-            top_k_set = set(top_k_idx)
+            # Top-K 로컬 인덱스 중 0(=target)이 있으면 hit
+            top_k_local = sorted_local[:k]
+            hit = 1.0 if 0 in top_k_local else 0.0
+            hr[k].append(hit)
 
-            hr[k].append(1.0 if top_k_set & pos_set else 0.0)
+            # NDCG@K
+            dcg = 0.0
+            for r, li in enumerate(top_k_local):
+                if li == 0:  # target found at rank r+1
+                    dcg = 1.0 / np.log2(r + 2)
+                    break
+            idcg = 1.0  # ideal: target at rank 1
+            ndcg_d[k].append(dcg / idcg)
 
-            dcg = sum(1.0 / np.log2(r + 2)
-                      for r, fi in enumerate(top_k_idx) if fi in pos_set)
-            ideal_len = min(len(pos_set), k)
-            idcg = sum(1.0 / np.log2(i + 2) for i in range(ideal_len))
-            ndcg_d[k].append(dcg / idcg if idcg > 0 else 0.0)
-
+            # HealthGain@K: top-K candidates의 health vs 전체 평균
             if hs_cpu is not None:
-                hg[k].append(float(hs_cpu[top_k_idx].mean()) - hs_mean)
+                topk_foods = candidates[top_k_local]
+                hg[k].append(float(hs_cpu[topk_foods].mean()) - hs_mean)
 
-    # ── 6. 집계 ────────────────────────────────────────────────────────────────
+    # ── 5. 집계 ────────────────────────────────────────────────────────────────
     out = {}
     for k in k_list:
         out[f'HR@{k}']   = float(np.mean(hr[k]))     if hr[k]     else 0.0
@@ -903,8 +917,7 @@ def evaluate_model(model, data, criterion, device, compute_rank=False):
 
     out = {**ld, **cm}
     if compute_rank:
-        rm = ranking_metrics_from_z(z_dict, model.decoder, data, device, hs,
-                                    score_batch=4096)
+        rm = ranking_metrics_from_z(z_dict, model.decoder, data, device, hs)
         out.update(rm)
 
     del z_dict
