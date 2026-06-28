@@ -1220,7 +1220,6 @@ def evaluate_model(model, data, criterion, device, compute_rank=False):
 def train_baseline_epoch(model, optimizer, train_data, criterion, device,
                          model_type='mf'):
     model.train()
-    ei_dict = {k: v.to(device) for k, v in train_data.edge_index_dict.items()}
     eil, el, pos_ei, neg_ei = _prepare_pairs(train_data, device)
 
     hs = _get_food_health(train_data, device)
@@ -1230,21 +1229,30 @@ def train_baseline_epoch(model, optimizer, train_data, criterion, device,
     optimizer.zero_grad()
     train_ei = train_data[('user','eats','food')].edge_index.to(device)
 
-    kw = {}
-    if model_type in ('lightgcn', 'ngcf', 'sgl'):
-        kw['train_edge_index'] = train_ei
-    if model_type == 'hfrsda':
-        kw['health_scores'] = hs
+    # ── Single propagation pass: compute u_e, f_e once, index for pos & neg ──
+    if model_type in ('lightgcn', 'sgl'):
+        u_e, f_e = model._lightgcn_prop(train_ei, device, 0.0) \
+                   if model_type == 'sgl' \
+                   else model._propagate(train_ei, device)
+        ps = (u_e[pos_ei[0]] * f_e[pos_ei[1]]).sum(-1)
+        ns = (u_e[neg_ei[0]] * f_e[neg_ei[1]]).sum(-1)
+    elif model_type == 'ngcf':
+        u_e, f_e = model._propagate(train_ei, device)
+        ps = (u_e[pos_ei[0]] * f_e[pos_ei[1]]).sum(-1)
+        ns = (u_e[neg_ei[0]] * f_e[neg_ei[1]]).sum(-1)
+    elif model_type == 'hfrsda':
+        ps = model(pos_ei, health_scores=hs)
+        ns = model(neg_ei, health_scores=hs)
+    else:  # mf
+        ps = model(pos_ei)
+        ns = model(neg_ei)
 
-    ps = model(pos_ei, **kw)
-    ns = model(neg_ei, **kw)
     loss, ld = criterion(ps, ns, ph, nh)
 
     # SGL: add SSL contrastive loss
     if model_type == 'sgl':
         u_idx = pos_ei[0].unique()
         f_idx = pos_ei[1].unique()
-        # Limit size to avoid OOM
         if u_idx.shape[0] > 512:
             u_idx = u_idx[torch.randperm(u_idx.shape[0])[:512]]
         if f_idx.shape[0] > 512:
@@ -1252,7 +1260,7 @@ def train_baseline_epoch(model, optimizer, train_data, criterion, device,
         ssl = model.ssl_loss(train_ei, device, u_idx, f_idx)
         loss = loss + ssl
         ld['ssl'] = ssl.item()
-        ld['cl']  = ssl.item()   # align key with mean-results aggregation
+        ld['cl']  = ssl.item()
 
     loss.backward()
     torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
