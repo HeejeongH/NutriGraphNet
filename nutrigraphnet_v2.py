@@ -1274,20 +1274,31 @@ def eval_baseline(model, data, criterion, device, model_type='mf',
     model.eval()
     eil, el, pos_ei, neg_ei = _prepare_pairs(data, device)
     hs = _get_food_health(data, device)
-
-    kw = {}
-    if model_type in ('lightgcn', 'ngcf', 'sgl') and train_ei is not None:
-        kw['train_edge_index'] = train_ei
-    if model_type == 'hfrsda':
-        kw['health_scores'] = hs
-
-    ps = model(pos_ei, **kw)
-    ns = model(neg_ei, **kw)
     ph = hs[pos_ei[1]] if hs is not None else None
     nh = hs[neg_ei[1]] if hs is not None else None
 
+    # ── Single propagation pass (same embedding space for all scoring) ──
+    if model_type in ('lightgcn', 'ngcf', 'sgl') and train_ei is not None:
+        if model_type == 'sgl':
+            u_e, f_e = model._lightgcn_prop(train_ei, device, 0.0)
+        else:
+            u_e, f_e = model._propagate(train_ei, device)
+        ps    = (u_e[pos_ei[0]] * f_e[pos_ei[1]]).sum(-1)
+        ns    = (u_e[neg_ei[0]] * f_e[neg_ei[1]]).sum(-1)
+        all_s = (u_e[eil[0]]    * f_e[eil[1]]   ).sum(-1)
+        kw = {'train_edge_index': train_ei}  # for _eval_baseline_rank
+    elif model_type == 'hfrsda':
+        kw = {'health_scores': hs}
+        ps    = model(pos_ei, **kw)
+        ns    = model(neg_ei, **kw)
+        all_s = model(eil,    **kw)
+    else:  # mf
+        kw = {}
+        ps    = model(pos_ei)
+        ns    = model(neg_ei)
+        all_s = model(eil)
+
     loss, ld = criterion(ps, ns, ph, nh)
-    all_s = model(eil, **kw)
     proba = torch.sigmoid(all_s).cpu().numpy()
     cm = classification_metrics(proba, el.cpu().numpy())
     out = {**ld, **cm}
