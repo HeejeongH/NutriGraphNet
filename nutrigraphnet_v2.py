@@ -1118,18 +1118,16 @@ def _prepare_pairs(data, device):
     eil = data[('user','eats','food')].edge_label_index.to(device)
     el  = data[('user','eats','food')].edge_label.to(device)
     pos_m = el == 1
-    neg_m = ~pos_m
-    pos_ei = eil[:, pos_m]   # [2, P]
-    neg_ei = eil[:, neg_m]   # [2, N]
-    n = min(pos_ei.shape[1], neg_ei.shape[1])
+    pos_ei = eil[:, pos_m]   # [2, P]  — guaranteed positive edges
 
-    # Re-match: pair each pos user with a random neg food from neg pool
-    # This ensures BPR compares same user's pos vs neg item
-    pos_ei_n = pos_ei[:, :n]
-    neg_foods = neg_ei[1, torch.randperm(neg_ei.shape[1], device=device)[:n]]
-    neg_ei_matched = torch.stack([pos_ei_n[0], neg_foods], dim=0)
+    n = pos_ei.shape[1]
+    num_foods = data['food'].num_nodes
 
-    return eil, el, pos_ei_n, neg_ei_matched
+    # Build user-matched negatives: same user, random food
+    neg_foods = torch.randint(0, num_foods, (n,), device=device)
+    neg_ei = torch.stack([pos_ei[0], neg_foods], dim=0)   # [2, P]
+
+    return eil, el, pos_ei, neg_ei
 
 
 def train_one_epoch(model, optimizer, train_data, criterion, device,
