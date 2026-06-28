@@ -2121,6 +2121,17 @@ def main():
                         help='Run lambda_health sensitivity sweep (0.001~1.0)')
     parser.add_argument('--sweep_values',    default='0.001,0.01,0.05,0.1,0.2,0.5',
                         help='comma-sep lambda_health values for sweep')
+    # ── Option C Analysis args ──────────────────────────────────────────────
+    parser.add_argument('--interaction_ratio', type=float, default=1.0,
+                        help='Fraction of interactions to keep (sparsity sweep, 0~1)')
+    parser.add_argument('--ablate_no_ingredient',  action='store_true',
+                        help='Remove food-ingredient edges from the graph')
+    parser.add_argument('--ablate_no_time',        action='store_true',
+                        help='Remove food-time edges from the graph')
+    parser.add_argument('--ablate_no_healthness',  action='store_true',
+                        help='Remove user-healthness-food edges from the graph')
+    parser.add_argument('--ablate_no_food_similar',action='store_true',
+                        help='Remove food-similar-food edges from the graph')
     args = parser.parse_args()
 
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -2135,6 +2146,47 @@ def main():
 
     with open(args.data_path, 'rb') as f:
         data = pickle.load(f)
+
+    # ── Option C: interaction sparsity ──────────────────────────────────────
+    if getattr(args, 'interaction_ratio', 1.0) < 1.0:
+        ratio = args.interaction_ratio
+        ei_key = ('user', 'eats', 'food')
+        rev_key = ('food', 'rev_eats', 'user')
+        h_key  = ('user', 'healthness', 'food')
+        rh_key = ('food', 'rev_healthness', 'user')
+        n_orig = data[ei_key].edge_index.shape[1]
+        torch.manual_seed(args.seed)
+        keep = torch.randperm(n_orig)[:int(n_orig * ratio)]
+        keep_sorted = keep.sort().values
+        for k in (ei_key, rev_key, h_key, rh_key):
+            if k in data.edge_types:
+                data[k].edge_index = data[k].edge_index[:, keep_sorted]
+                if hasattr(data[k], 'edge_attr') and data[k].edge_attr is not None:
+                    data[k].edge_attr = data[k].edge_attr[keep_sorted]
+        print(f"  [sparsity] kept {len(keep_sorted):,}/{n_orig:,} interactions "
+              f"({ratio*100:.0f}%)")
+
+    # ── Option C: graph component ablation ──────────────────────────────────
+    _remove_edge_types = []
+    if getattr(args, 'ablate_no_ingredient', False):
+        _remove_edge_types += [('food','contains','ingredient'),
+                                ('ingredient','rev_contains','food')]
+    if getattr(args, 'ablate_no_time', False):
+        _remove_edge_types += [('food','eaten_at','time'),
+                                ('time','rev_eaten_at','food')]
+    if getattr(args, 'ablate_no_healthness', False):
+        _remove_edge_types += [('user','healthness','food'),
+                                ('food','rev_healthness','user')]
+    if getattr(args, 'ablate_no_food_similar', False):
+        _remove_edge_types += [('food','similar','food')]
+    for et in _remove_edge_types:
+        if et in data.edge_types:
+            # zero out edge_index to effectively remove
+            data[et].edge_index = torch.zeros((2, 0), dtype=torch.long)
+            if hasattr(data[et], 'edge_attr'):
+                data[et].edge_attr = None
+    if _remove_edge_types:
+        print(f"  [ablation] removed edges: {_remove_edge_types}")
 
     print("Data Summary:")
     print(f"  Users        : {data['user'].num_nodes:,}  (feat={data['user'].x.shape[1]})")
