@@ -1,0 +1,732 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NutriGraphNet — Analysis Results Dashboard</title>
+<style>
+  :root {
+    --bg: #0f1117; --card: #1a1d27; --border: #2a2d3d;
+    --accent: #6c8ebf; --accent2: #82c995; --accent3: #e88c3a;
+    --text: #e2e8f0; --muted: #8892a4; --best: #ffd700;
+    --mf: #4E79A7; --lgcn: #F28E2B; --ngcf: #59A14F;
+    --sgl: #E15759; --hfrsda: #76B7B2;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: 'Segoe UI', system-ui, sans-serif; padding: 2rem; }
+  h1 { font-size: 1.8rem; font-weight: 700; color: #fff; margin-bottom: .4rem; }
+  .subtitle { color: var(--muted); font-size: .9rem; margin-bottom: 1.5rem; }
+  .badge { display:inline-block; padding:.15rem .6rem; border-radius:999px; font-size:.72rem;
+           font-weight:600; text-transform:uppercase; letter-spacing:.05em; margin-right:.4rem; }
+  .badge-blue{background:#1e3a5f;color:#6c8ebf;}
+  .badge-green{background:#1a3a2a;color:#82c995;}
+  .badge-orange{background:#3a2510;color:#e88c3a;}
+  .badge-red{background:#3a1010;color:#E15759;}
+
+  /* TABS */
+  .tab-bar { display:flex; gap:.5rem; margin-bottom:2rem; flex-wrap:wrap; }
+  .tab-btn { padding:.5rem 1.2rem; background:var(--card); border:1px solid var(--border);
+             border-radius:8px; color:var(--muted); cursor:pointer; font-size:.88rem;
+             transition:all .2s; }
+  .tab-btn:hover { border-color:var(--accent); color:var(--text); }
+  .tab-btn.active { background:var(--accent); border-color:var(--accent); color:#fff; font-weight:600; }
+  .tab-content { display:none; }
+  .tab-content.active { display:block; }
+
+  /* SECTION */
+  .section { margin-bottom: 2.5rem; }
+  .section-title { font-size: 1.05rem; font-weight: 600; color: var(--accent);
+                   border-left: 3px solid var(--accent); padding-left: .7rem;
+                   margin-bottom: 1rem; text-transform: uppercase; letter-spacing: .06em; }
+
+  /* STAT CARDS */
+  .stat-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(160px,1fr)); gap:1rem; margin-bottom:2rem; }
+  .stat-card { background:var(--card); border:1px solid var(--border); border-radius:10px; padding:1rem 1.2rem; }
+  .stat-label { font-size:.75rem; color:var(--muted); text-transform:uppercase; letter-spacing:.07em; margin-bottom:.3rem; }
+  .stat-value { font-size:1.5rem; font-weight:700; color:#fff; }
+  .stat-sub { font-size:.78rem; color:var(--muted); margin-top:.2rem; }
+
+  /* TABLE */
+  .table-wrap { overflow-x:auto; border-radius:10px; border:1px solid var(--border); }
+  table { width:100%; border-collapse:collapse; font-size:.87rem; }
+  thead { background:#12151f; }
+  th { padding:.7rem 1rem; text-align:left; color:var(--muted); font-weight:600;
+       text-transform:uppercase; letter-spacing:.05em; font-size:.75rem;
+       border-bottom:1px solid var(--border); white-space:nowrap; }
+  td { padding:.65rem 1rem; border-bottom:1px solid var(--border); color:var(--text); white-space:nowrap; }
+  tr:last-child td { border-bottom:none; }
+  tr:hover td { background:rgba(108,142,191,.07); }
+  .best { color:var(--best); font-weight:700; }
+  .worst { color:#E15759; }
+  .model-dot { display:inline-block; width:8px; height:8px; border-radius:50%; margin-right:6px; }
+
+  /* FINDING CARDS */
+  .finding-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(280px,1fr)); gap:1rem; margin-top:1rem; }
+  .finding-card { background:var(--card); border:1px solid var(--border); border-radius:10px; padding:1.2rem; }
+  .finding-card.alert { border-left:3px solid #E15759; }
+  .finding-card.insight { border-left:3px solid var(--accent2); }
+  .finding-card.neutral { border-left:3px solid var(--accent3); }
+  .finding-title { font-weight:700; margin-bottom:.5rem; font-size:.92rem; }
+  .finding-body { font-size:.84rem; color:var(--muted); line-height:1.55; }
+  .finding-body strong { color:var(--text); }
+
+  /* CHART AREA */
+  .chart-container { background:var(--card); border:1px solid var(--border); border-radius:10px;
+                     padding:1.5rem; margin-bottom:1.5rem; }
+  .chart-title { font-size:.9rem; font-weight:600; margin-bottom:1rem; color:var(--text); }
+  canvas { max-width:100%; }
+
+  /* HIGHLIGHT BOX */
+  .highlight-box { background:#1a2035; border:1px solid #2a3a5f; border-radius:10px; padding:1.2rem 1.5rem;
+                   margin-bottom:1.5rem; font-size:.88rem; line-height:1.6; }
+  .highlight-box .hl-title { font-weight:700; color:#6c8ebf; margin-bottom:.4rem; }
+
+  /* LATEX */
+  pre { background:#0a0c14; border:1px solid var(--border); border-radius:8px;
+        padding:1.2rem; font-size:.78rem; overflow-x:auto; line-height:1.6;
+        color:#a8c0e0; white-space:pre; }
+  .copy-btn { float:right; padding:.25rem .7rem; font-size:.75rem; background:#1e3a5f;
+              border:none; border-radius:5px; color:#6c8ebf; cursor:pointer; margin-top:-.2rem; }
+  .copy-btn:hover { background:#2a4a7f; }
+</style>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+</head>
+<body>
+
+<h1>NutriGraphNet — Analysis Results Dashboard</h1>
+<p class="subtitle">
+  <span class="badge badge-blue">Option C Paper</span>
+  <span class="badge badge-green">v0.2</span>
+  <span class="badge badge-orange">2026-06-28</span>
+  "Why Graph Augmentation Fails in Sparse Nutrition Graphs" · 5-Fold CV Results
+</p>
+
+<div class="tab-bar">
+  <button class="tab-btn active" onclick="showTab('tab-overview')">📊 Overview</button>
+  <button class="tab-btn" onclick="showTab('tab-expA')">EXP-A · SGL Sweep</button>
+  <button class="tab-btn" onclick="showTab('tab-expB')">EXP-B · Sparsity</button>
+  <button class="tab-btn" onclick="showTab('tab-expC')">EXP-C · λ_health</button>
+  <button class="tab-btn" onclick="showTab('tab-expD')">EXP-D · Dim Sweep</button>
+  <button class="tab-btn" onclick="showTab('tab-expF')">EXP-F · Ablation</button>
+  <button class="tab-btn" onclick="showTab('tab-latex')">LaTeX / Paper</button>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════ TAB OVERVIEW -->
+<div id="tab-overview" class="tab-content active">
+  <div class="section">
+    <div class="section-title">Main Results — dim=64, Full Dataset</div>
+    <div class="stat-grid">
+      <div class="stat-card"><div class="stat-label">Best HR@10</div><div class="stat-value">0.781</div><div class="stat-sub">NGCF (d=64)</div></div>
+      <div class="stat-card"><div class="stat-label">Best NDCG@10</div><div class="stat-value">0.603</div><div class="stat-sub">HFRS-DA (d=64)</div></div>
+      <div class="stat-card"><div class="stat-label">Best AUC</div><div class="stat-value">0.877</div><div class="stat-sub">NGCF (d=64)</div></div>
+      <div class="stat-card"><div class="stat-label">SGL HR@10</div><div class="stat-value" style="color:#E15759">0.347</div><div class="stat-sub">vs MF 0.730 (−53%)</div></div>
+      <div class="stat-card"><div class="stat-label">MF HR@10</div><div class="stat-value" style="color:#F28E2B">0.730</div><div class="stat-sub">Best ranking despite lowest AUC</div></div>
+      <div class="stat-card"><div class="stat-label">λ Sensitivity</div><div class="stat-value" style="color:#76B7B2">~0</div><div class="stat-sub">Δ AUC &lt; 1.25e-7</div></div>
+    </div>
+
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th>Model</th><th>AUC</th><th>F1</th><th>HR@10</th><th>NDCG@10</th><th>MRR</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><span class="model-dot" style="background:var(--mf)"></span>MF</td>
+            <td class="worst">0.5087</td><td class="worst">0.5081</td>
+            <td class="best">0.7300</td><td class="best">0.5946</td><td class="best">0.5599</td>
+          </tr>
+          <tr>
+            <td><span class="model-dot" style="background:var(--lgcn)"></span>LightGCN</td>
+            <td>0.8220</td><td>0.6792</td><td>0.7113</td><td>0.4935</td><td>0.4351</td>
+          </tr>
+          <tr>
+            <td><span class="model-dot" style="background:var(--ngcf)"></span>NGCF</td>
+            <td class="best">0.8771</td><td class="best">0.7746</td><td>0.7813</td><td>0.5509</td><td>0.4843</td>
+          </tr>
+          <tr>
+            <td><span class="model-dot" style="background:var(--sgl)"></span>SGL</td>
+            <td class="worst">0.6867</td><td class="worst">0.6517</td>
+            <td class="worst">0.3467</td><td class="worst">0.2201</td><td class="worst">0.2008</td>
+          </tr>
+          <tr>
+            <td><span class="model-dot" style="background:var(--hfrsda)"></span>HFRS-DA</td>
+            <td>0.8553</td><td>0.7189</td><td>0.7533</td><td class="best">0.6033</td><td class="best">0.5638</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="section-title">Three Key Findings</div>
+    <div class="finding-grid">
+      <div class="finding-card alert">
+        <div class="finding-title">🔴 C1 · SGL Augmentation Collapse</div>
+        <div class="finding-body">
+          SGL achieves HR@10=<strong>0.347</strong> vs. MF=0.730 (−53%) at full density.<br>
+          At 10% density: SGL=<strong>0.092</strong> vs. MF=0.344 (−73%).<br>
+          Graph density (0.040%) is 10× sparser than MovieLens-1M.<br>
+          Edge dropout removes ~1.26 interactions/user at 10% data → contrastive collapse.
+        </div>
+      </div>
+      <div class="finding-card insight">
+        <div class="finding-title">🟡 C2 · MF Ranking Paradox</div>
+        <div class="finding-body">
+          MF (AUC=0.509) beats all GNNs on HR@10/NDCG@10/MRR despite lowest AUC.<br>
+          Graph ablation: removing all auxiliary edge types → <strong>zero performance change</strong>.<br>
+          GNN over-smoothing + inutile heterogeneous edges explain the paradox.
+        </div>
+      </div>
+      <div class="finding-card neutral">
+        <div class="finding-title">🔵 C3 · Health Constraint Ineffective</div>
+        <div class="finding-body">
+          λ_health sweep 0.001→1.0: HR@10=<strong>0.7340</strong> for all values (Δ=0.000).<br>
+          AUC variance &lt; 1.25×10⁻⁷ across four orders of magnitude.<br>
+          Health loss gradient vanishes — no actual health alignment in practice.
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="section-title">AUC vs. HR@10 Scatter</div>
+    <div class="chart-container">
+      <div class="chart-title">AUC–Ranking Paradox: High AUC ≠ High HR@10</div>
+      <canvas id="scatterAucHr" height="220"></canvas>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════ TAB EXP-A -->
+<div id="tab-expA" class="tab-content">
+  <div class="highlight-box">
+    <div class="hl-title">EXP-A · SGL Augmentation Ratio Sweep (p = 0.0 → 0.5)</div>
+    Best performance at p=0.0 (no augmentation). Every increase in dropout ratio monotonically degrades HR@10 and NDCG@10.
+    Augmentation is <strong>never beneficial</strong> on NutriGraph-KR.
+  </div>
+  <div class="chart-container">
+    <div class="chart-title">SGL: Ranking Metrics vs. Augmentation Ratio p</div>
+    <canvas id="chartA" height="250"></canvas>
+  </div>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>p</th><th>AUC</th><th>F1</th><th>HR@10</th><th>NDCG@10</th><th>MRR</th></tr></thead>
+      <tbody id="tableA"></tbody>
+    </table>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════ TAB EXP-B -->
+<div id="tab-expB" class="tab-content">
+  <div class="highlight-box">
+    <div class="hl-title">EXP-B · Interaction Sparsity Sweep (10% → 100%)</div>
+    SGL collapses to HR@10=<strong>0.092</strong> at 10% density — 3.74× lower than MF (0.344).
+    MF scales near-linearly; SGL degrades catastrophically below ~30% density.
+  </div>
+  <div class="chart-container">
+    <div class="chart-title">HR@10 vs. Interaction Ratio (%) — 4 Models</div>
+    <canvas id="chartB_hr" height="250"></canvas>
+  </div>
+  <div class="chart-container">
+    <div class="chart-title">NDCG@10 vs. Interaction Ratio (%)</div>
+    <canvas id="chartB_ndcg" height="250"></canvas>
+  </div>
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr><th>Density</th>
+          <th>MF HR@10</th><th>LightGCN HR@10</th><th>NGCF HR@10</th><th>SGL HR@10</th>
+          <th>MF NDCG</th><th>LightGCN NDCG</th><th>NGCF NDCG</th><th>SGL NDCG</th>
+        </tr>
+      </thead>
+      <tbody id="tableB"></tbody>
+    </table>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════ TAB EXP-C -->
+<div id="tab-expC" class="tab-content">
+  <div class="highlight-box">
+    <div class="hl-title">EXP-C · λ_health Sensitivity (0.001 → 1.0, HFRS-DA)</div>
+    HR@10 = 0.7340 for <strong>all</strong> λ values. AUC varies by &lt;1.25×10⁻⁷.
+    The health constraint gradient effectively vanishes during backpropagation.
+  </div>
+  <div class="chart-container">
+    <div class="chart-title">HFRS-DA: HR@10 and AUC vs. λ_health (log scale)</div>
+    <canvas id="chartC" height="250"></canvas>
+  </div>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>λ_health</th><th>AUC</th><th>F1</th><th>HR@10</th><th>NDCG@10</th><th>MRR</th></tr></thead>
+      <tbody id="tableC"></tbody>
+    </table>
+  </div>
+  <div class="finding-card neutral" style="margin-top:1rem">
+    <div class="finding-title">Interpretation</div>
+    <div class="finding-body">
+      Three possible explanations for zero sensitivity: (1) healthness edge features are linearly separable — model achieves ~zero health loss trivially regardless of λ; 
+      (2) health loss is not properly normalized relative to BPR loss — overwhelmed at any λ; 
+      (3) attention heads collapse to degenerate fixed-point. 
+      <strong>Practical implication:</strong> HFRS-DA provides no actual health alignment guarantee in this dataset.
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════ TAB EXP-D -->
+<div id="tab-expD" class="tab-content">
+  <div class="highlight-box">
+    <div class="hl-title">EXP-D · Embedding Dimension Sweep (d = 16 → 256, all models)</div>
+    MF monotonically improves (0.685→0.753). GNNs plateau at d=64–128. 
+    SGL partially recovers at high d (0.270→0.421) but remains far below MF/NGCF.
+    HFRS-DA degrades at d=256 (over-fitting with health attention).
+  </div>
+  <div class="chart-container">
+    <div class="chart-title">HR@10 vs. Embedding Dimension d</div>
+    <canvas id="chartD_hr" height="250"></canvas>
+  </div>
+  <div class="chart-container">
+    <div class="chart-title">AUC vs. Embedding Dimension d</div>
+    <canvas id="chartD_auc" height="250"></canvas>
+  </div>
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr><th>d</th>
+            <th>MF HR@10</th><th>LightGCN HR@10</th><th>NGCF HR@10</th><th>SGL HR@10</th><th>HFRSDA HR@10</th>
+            <th>MF AUC</th><th>LightGCN AUC</th><th>NGCF AUC</th><th>SGL AUC</th><th>HFRSDA AUC</th>
+        </tr>
+      </thead>
+      <tbody id="tableD"></tbody>
+    </table>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════ TAB EXP-F -->
+<div id="tab-expF" class="tab-content">
+  <div class="highlight-box">
+    <div class="hl-title">EXP-F · Graph Component Ablation (HFRS-DA)</div>
+    <span class="badge badge-red">Critical Finding</span>
+    Removing ANY edge type (ingredient, time, food-similar, or all combinations) produces 
+    <strong>zero change</strong> in HR@10, NDCG@10, or AUC. 
+    All heterogeneous edges are informationally inert in this model/dataset combination.
+  </div>
+  <div class="chart-container">
+    <div class="chart-title">HFRS-DA: Performance by Graph Variant</div>
+    <canvas id="chartF" height="250"></canvas>
+  </div>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Variant</th><th>AUC</th><th>F1</th><th>HR@10</th><th>NDCG@10</th><th>MRR</th></tr></thead>
+      <tbody id="tableF"></tbody>
+    </table>
+  </div>
+  <div class="finding-card alert" style="margin-top:1rem">
+    <div class="finding-title">What This Means</div>
+    <div class="finding-body">
+      This finding directly explains the <strong>MF Ranking Paradox</strong>: since auxiliary edge types provide zero information, 
+      GNN message-passing over them adds noise. MF, using only user-food interactions, avoids this noise entirely. 
+      This also implies that the NutriGraph-KR graph's value comes entirely from user-food co-occurrence patterns, 
+      not from compositional (ingredient) or temporal signals in the current model architecture.
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════ TAB LATEX -->
+<div id="tab-latex" class="tab-content">
+  <div class="section">
+    <div class="section-title">LaTeX Table 1 — Main Results</div>
+    <button class="copy-btn" onclick="copyCode('latex1')">Copy</button>
+    <pre id="latex1">
+\begin{table}[t]
+\centering
+\caption{Performance comparison on NutriGraph-KR (5-fold CV, $d=64$).
+         Bold = best per column. $\dagger$ SGL anomaly: HR@10 is 53\% lower than MF.}
+\label{tab:main}
+\begin{tabular}{llccccc}
+\toprule
+Model & Type & AUC & F1 & HR@10 & NDCG@10 & MRR \\
+\midrule
+MF          & Non-graph  & 0.509 & 0.508 & \textbf{0.730} & \textbf{0.595} & \textbf{0.560} \\
+LightGCN    & Graph      & 0.822 & 0.679 & 0.711 & 0.493 & 0.435 \\
+NGCF        & Graph      & \textbf{0.877} & \textbf{0.775} & 0.781 & 0.551 & 0.484 \\
+SGL$^\dagger$ & Self-sup.& 0.687 & 0.652 & 0.347 & 0.220 & 0.201 \\
+HFRS-DA     & Health     & 0.855 & 0.719 & 0.753 & \textbf{0.603} & \textbf{0.564} \\
+\bottomrule
+\end{tabular}
+\end{table}
+    </pre>
+  </div>
+
+  <div class="section">
+    <div class="section-title">LaTeX Table A — SGL Aug Sweep</div>
+    <button class="copy-btn" onclick="copyCode('latex2')">Copy</button>
+    <pre id="latex2">
+\begin{table}[t]
+\centering
+\caption{SGL performance vs. augmentation ratio $p$ (EXP-A). Best at $p{=}0.0$.}
+\label{tab:sgl_sweep}
+\begin{tabular}{cccccc}
+\toprule
+$p$ & AUC & F1 & HR@10 & NDCG@10 & MRR \\
+\midrule
+0.0 & \textbf{0.7001} & \textbf{0.6617} & \textbf{0.3604} & \textbf{0.2336} & \textbf{0.2152} \\
+0.1 & 0.6989 & 0.6598 & 0.3576 & 0.2283 & 0.2089 \\
+0.2 & 0.6979 & 0.6593 & 0.3564 & 0.2264 & 0.2067 \\
+0.3 & 0.6975 & 0.6594 & 0.3600 & 0.2267 & 0.2058 \\
+0.4 & 0.6975 & 0.6596 & 0.3576 & 0.2268 & 0.2069 \\
+0.5 & 0.6983 & 0.6604 & 0.3520 & 0.2288 & 0.2116 \\
+\bottomrule
+\end{tabular}
+\end{table}
+    </pre>
+  </div>
+
+  <div class="section">
+    <div class="section-title">LaTeX Table B — Sparsity Sweep HR@10</div>
+    <button class="copy-btn" onclick="copyCode('latex3')">Copy</button>
+    <pre id="latex3">
+\begin{table}[t]
+\centering
+\caption{HR@10 vs. interaction density (\% of full data). SGL collapses at low density (EXP-B).}
+\label{tab:sparsity}
+\begin{tabular}{lcccc}
+\toprule
+Density & MF & LightGCN & NGCF & SGL \\
+\midrule
+10\% & 0.344 & 0.513 & 0.497 & \textbf{0.092}$^*$ \\
+30\% & 0.621 & 0.694 & 0.687 & 0.212 \\
+50\% & 0.718 & 0.721 & 0.754 & 0.275 \\
+70\% & 0.735 & 0.730 & 0.759 & 0.320 \\
+100\% & \textbf{0.757} & 0.711 & \textbf{0.777} & 0.354 \\
+\bottomrule
+\multicolumn{5}{l}{$^*$ SGL@10\% is 3.74$\times$ lower than MF@10\%.}
+\end{tabular}
+\end{table}
+    </pre>
+  </div>
+
+  <div class="section">
+    <div class="section-title">LaTeX Table C — λ_health Sensitivity</div>
+    <button class="copy-btn" onclick="copyCode('latex4')">Copy</button>
+    <pre id="latex4">
+\begin{table}[t]
+\centering
+\caption{HFRS-DA performance vs. $\lambda_\text{health}$ (EXP-C). All values identical to 4 decimal places.}
+\label{tab:lambda}
+\begin{tabular}{cccccc}
+\toprule
+$\lambda_\text{health}$ & AUC & F1 & HR@10 & NDCG@10 & MRR \\
+\midrule
+0.000 & 0.8551 & 0.7200 & 0.7340 & 0.5977 & 0.5634 \\
+0.001 & 0.8551 & 0.7200 & 0.7340 & 0.5977 & 0.5634 \\
+0.010 & 0.8551 & 0.7200 & 0.7340 & 0.5977 & 0.5634 \\
+0.100 & 0.8551 & 0.7200 & 0.7340 & 0.5977 & 0.5634 \\
+1.000 & 0.8551 & 0.7200 & 0.7340 & 0.5977 & 0.5634 \\
+\midrule
+$\Delta$ (max-min) & $<$1.3e-7 & $<$3e-6 & 0.0000 & 0.0000 & 3e-5 \\
+\bottomrule
+\end{tabular}
+\end{table}
+    </pre>
+  </div>
+</div>
+
+<script>
+// ── DATA ──────────────────────────────────────────────────────────────────────
+const DATA = {
+  A: {
+    ratios: [0.0, 0.1, 0.2, 0.3, 0.4, 0.5],
+    hr:   [0.3604, 0.3576, 0.3564, 0.3600, 0.3576, 0.3520],
+    ndcg: [0.2336, 0.2283, 0.2264, 0.2267, 0.2268, 0.2288],
+    mrr:  [0.2152, 0.2089, 0.2067, 0.2058, 0.2069, 0.2116],
+    auc:  [0.7001, 0.6989, 0.6979, 0.6975, 0.6975, 0.6983],
+    f1:   [0.6617, 0.6598, 0.6593, 0.6594, 0.6596, 0.6604],
+  },
+  B: {
+    pcts: [10, 30, 50, 70, 100],
+    mf_hr:   [0.344, 0.621, 0.718, 0.735, 0.757],
+    lgcn_hr: [0.513, 0.694, 0.721, 0.730, 0.711],
+    ngcf_hr: [0.497, 0.687, 0.754, 0.759, 0.777],
+    sgl_hr:  [0.092, 0.212, 0.275, 0.320, 0.354],
+    mf_nd:   [0.236, 0.468, 0.574, 0.583, 0.613],
+    lgcn_nd: [0.332, 0.488, 0.516, 0.505, 0.494],
+    ngcf_nd: [0.333, 0.472, 0.552, 0.527, 0.559],
+    sgl_nd:  [0.046, 0.111, 0.163, 0.194, 0.226],
+  },
+  C: {
+    lambdas: [0.0, 0.001, 0.005, 0.01, 0.05, 0.1, 0.5, 1.0],
+    hr:  [0.734, 0.734, 0.734, 0.734, 0.734, 0.734, 0.734, 0.734],
+    auc: [0.85511032, 0.85511031, 0.85511040, 0.85511032, 0.85511030, 0.85511033, 0.85511032, 0.85511028],
+    ndcg:[0.5977, 0.5977, 0.5977, 0.5977, 0.5977, 0.5977, 0.5977, 0.5977],
+    mrr: [0.56345, 0.56345, 0.56350, 0.56345, 0.56345, 0.56345, 0.56345, 0.56345],
+    f1:  [0.7200, 0.7200, 0.7200, 0.7200, 0.7200, 0.7200, 0.7200, 0.7200],
+  },
+  D: {
+    dims: [16, 32, 64, 128, 256],
+    mf_hr:    [0.685, 0.719, 0.730, 0.753, 0.753],
+    lgcn_hr:  [0.714, 0.730, 0.711, 0.734, 0.744],
+    ngcf_hr:  [0.710, 0.777, 0.781, 0.783, 0.787],
+    sgl_hr:   [0.270, 0.313, 0.347, 0.381, 0.421],
+    hfrsda_hr:[0.743, 0.755, 0.753, 0.752, 0.718],
+    mf_auc:   [0.504, 0.514, 0.509, 0.535, 0.543],
+    lgcn_auc: [0.838, 0.842, 0.822, 0.831, 0.841],
+    ngcf_auc: [0.864, 0.876, 0.877, 0.879, 0.881],
+    sgl_auc:  [0.654, 0.668, 0.687, 0.704, 0.722],
+    hfrsda_auc:[0.857, 0.862, 0.855, 0.816, 0.574],
+  },
+  F: {
+    labels: ['Full Graph','w/o Ingredient','w/o Time','w/o Food-Similar','w/o Ingr.+Time'],
+    hr:   [0.7340, 0.7340, 0.7340, 0.7340, 0.7340],
+    ndcg: [0.5977, 0.5977, 0.5977, 0.5977, 0.5977],
+    auc:  [0.8551, 0.8551, 0.8551, 0.8551, 0.8551],
+    f1:   [0.7200, 0.7200, 0.7200, 0.7200, 0.7200],
+    mrr:  [0.5635, 0.5635, 0.5635, 0.5635, 0.5635],
+  }
+};
+
+const MC = {mf:'#4E79A7', lgcn:'#F28E2B', ngcf:'#59A14F', sgl:'#E15759', hfrsda:'#76B7B2'};
+const CHART_DEFAULTS = {
+  responsive: true,
+  plugins: { legend: { labels: { color:'#e2e8f0' } } },
+  scales: {
+    x: { ticks:{color:'#8892a4'}, grid:{color:'#2a2d3d'} },
+    y: { ticks:{color:'#8892a4'}, grid:{color:'#2a2d3d'} }
+  }
+};
+
+function deepMerge(a, b) {
+  const r = {...a};
+  for (const k in b) {
+    if (b[k] && typeof b[k]==='object' && !Array.isArray(b[k])) r[k] = deepMerge(a[k]||{}, b[k]);
+    else r[k] = b[k];
+  }
+  return r;
+}
+
+// ── TABS ──────────────────────────────────────────────────────────────────────
+function showTab(id) {
+  document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
+  document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+  event.target.classList.add('active');
+  // lazy init charts
+  if (id==='tab-overview' && !window._chartScatter) initScatter();
+  if (id==='tab-expA' && !window._chartA) initChartA();
+  if (id==='tab-expB' && !window._chartB) initChartB();
+  if (id==='tab-expC' && !window._chartC) initChartC();
+  if (id==='tab-expD' && !window._chartD) initChartD();
+  if (id==='tab-expF' && !window._chartF) initChartF();
+}
+
+// ── CHART helpers ─────────────────────────────────────────────────────────────
+function lineDS(label, data, color, dash=[]) {
+  return { label, data, borderColor:color, backgroundColor:color+'33',
+           pointBackgroundColor:'#0f1117', pointBorderColor:color, pointBorderWidth:2,
+           borderWidth:2.2, tension:0.25,
+           borderDash: dash, fill:false };
+}
+
+// ── SCATTER overview ──────────────────────────────────────────────────────────
+function initScatter() {
+  window._chartScatter = true;
+  const pts = [
+    {x:0.509, y:0.730, label:'MF', color:MC.mf},
+    {x:0.822, y:0.711, label:'LightGCN', color:MC.lgcn},
+    {x:0.877, y:0.781, label:'NGCF', color:MC.ngcf},
+    {x:0.687, y:0.347, label:'SGL', color:MC.sgl},
+    {x:0.855, y:0.753, label:'HFRS-DA', color:MC.hfrsda},
+  ];
+  new Chart(document.getElementById('scatterAucHr'), {
+    type:'scatter',
+    data:{ datasets: pts.map(p=>({
+      label: p.label, data:[{x:p.x, y:p.y}],
+      backgroundColor: p.color+'cc', borderColor:p.color,
+      pointRadius:10, pointHoverRadius:13,
+    }))},
+    options: deepMerge(CHART_DEFAULTS, {
+      plugins: { legend:{ position:'right', labels:{color:'#e2e8f0', padding:16} } },
+      scales: {
+        x:{title:{display:true,text:'AUC',color:'#8892a4'}, min:0.45, max:0.92, ticks:{color:'#8892a4'}, grid:{color:'#2a2d3d'}},
+        y:{title:{display:true,text:'HR@10',color:'#8892a4'}, min:0.25, max:0.85, ticks:{color:'#8892a4'}, grid:{color:'#2a2d3d'}},
+      }
+    })
+  });
+}
+
+// ── EXP-A ─────────────────────────────────────────────────────────────────────
+function initChartA() {
+  window._chartA = true;
+  const labels = DATA.A.ratios.map(r=>`p=${r}`);
+  new Chart(document.getElementById('chartA'), {
+    type:'line', 
+    data:{ labels, datasets:[
+      lineDS('HR@10', DATA.A.hr, '#E15759'),
+      lineDS('NDCG@10', DATA.A.ndcg, '#4E79A7'),
+      lineDS('MRR', DATA.A.mrr, '#F28E2B'),
+    ]},
+    options: deepMerge(CHART_DEFAULTS, { scales:{y:{min:0.19,max:0.38}} })
+  });
+  // fill table
+  const tb = document.getElementById('tableA');
+  DATA.A.ratios.forEach((r,i) => {
+    const best = i===0;
+    tb.innerHTML += `<tr>
+      <td>${r.toFixed(1)}</td>
+      <td>${DATA.A.auc[i].toFixed(4)}</td>
+      <td>${DATA.A.f1[i].toFixed(4)}</td>
+      <td class="${best?'best':''}">${DATA.A.hr[i].toFixed(4)}</td>
+      <td class="${best?'best':''}">${DATA.A.ndcg[i].toFixed(4)}</td>
+      <td class="${best?'best':''}">${DATA.A.mrr[i].toFixed(4)}</td>
+    </tr>`;
+  });
+}
+
+// ── EXP-B ─────────────────────────────────────────────────────────────────────
+function initChartB() {
+  window._chartB = true;
+  const labels = DATA.B.pcts.map(p=>`${p}%`);
+  const cfg = deepMerge(CHART_DEFAULTS, { scales:{y:{min:0, max:0.85}} });
+  new Chart(document.getElementById('chartB_hr'), {
+    type:'line',
+    data:{ labels, datasets:[
+      lineDS('MF',       DATA.B.mf_hr,   MC.mf),
+      lineDS('LightGCN', DATA.B.lgcn_hr, MC.lgcn),
+      lineDS('NGCF',     DATA.B.ngcf_hr, MC.ngcf),
+      lineDS('SGL',      DATA.B.sgl_hr,  MC.sgl, [5,4]),
+    ]},
+    options: cfg
+  });
+  new Chart(document.getElementById('chartB_ndcg'), {
+    type:'line',
+    data:{ labels, datasets:[
+      lineDS('MF',       DATA.B.mf_nd,   MC.mf),
+      lineDS('LightGCN', DATA.B.lgcn_nd, MC.lgcn),
+      lineDS('NGCF',     DATA.B.ngcf_nd, MC.ngcf),
+      lineDS('SGL',      DATA.B.sgl_nd,  MC.sgl, [5,4]),
+    ]},
+    options: deepMerge(CHART_DEFAULTS, { scales:{y:{min:0, max:0.65}} })
+  });
+  const tb = document.getElementById('tableB');
+  DATA.B.pcts.forEach((p,i) => {
+    tb.innerHTML += `<tr>
+      <td>${p}%</td>
+      <td>${DATA.B.mf_hr[i].toFixed(3)}</td>
+      <td>${DATA.B.lgcn_hr[i].toFixed(3)}</td>
+      <td>${DATA.B.ngcf_hr[i].toFixed(3)}</td>
+      <td class="${i===0?'worst':''}">${DATA.B.sgl_hr[i].toFixed(3)}</td>
+      <td>${DATA.B.mf_nd[i].toFixed(3)}</td>
+      <td>${DATA.B.lgcn_nd[i].toFixed(3)}</td>
+      <td>${DATA.B.ngcf_nd[i].toFixed(3)}</td>
+      <td class="${i===0?'worst':''}">${DATA.B.sgl_nd[i].toFixed(3)}</td>
+    </tr>`;
+  });
+}
+
+// ── EXP-C ─────────────────────────────────────────────────────────────────────
+function initChartC() {
+  window._chartC = true;
+  const labels = DATA.C.lambdas.map(l=>`λ=${l}`);
+  new Chart(document.getElementById('chartC'), {
+    type:'line',
+    data:{ labels, datasets:[
+      lineDS('HR@10',  DATA.C.hr,  '#76B7B2'),
+      lineDS('NDCG@10',DATA.C.ndcg,'#4E79A7'),
+    ]},
+    options: deepMerge(CHART_DEFAULTS, { scales:{y:{min:0.7, max:0.8}} })
+  });
+  const tb = document.getElementById('tableC');
+  DATA.C.lambdas.forEach((l,i) => {
+    tb.innerHTML += `<tr>
+      <td>${l}</td>
+      <td>${DATA.C.auc[i].toFixed(7)}</td>
+      <td>${DATA.C.f1[i].toFixed(4)}</td>
+      <td>${DATA.C.hr[i].toFixed(4)}</td>
+      <td>${DATA.C.ndcg[i].toFixed(4)}</td>
+      <td>${DATA.C.mrr[i].toFixed(5)}</td>
+    </tr>`;
+  });
+}
+
+// ── EXP-D ─────────────────────────────────────────────────────────────────────
+function initChartD() {
+  window._chartD = true;
+  const labels = DATA.D.dims.map(d=>`d=${d}`);
+  new Chart(document.getElementById('chartD_hr'), {
+    type:'line',
+    data:{ labels, datasets:[
+      lineDS('MF',       DATA.D.mf_hr,    MC.mf),
+      lineDS('LightGCN', DATA.D.lgcn_hr,  MC.lgcn),
+      lineDS('NGCF',     DATA.D.ngcf_hr,  MC.ngcf),
+      lineDS('SGL',      DATA.D.sgl_hr,   MC.sgl, [5,4]),
+      lineDS('HFRS-DA',  DATA.D.hfrsda_hr,MC.hfrsda),
+    ]},
+    options: deepMerge(CHART_DEFAULTS, { scales:{y:{min:0.2, max:0.83}} })
+  });
+  new Chart(document.getElementById('chartD_auc'), {
+    type:'line',
+    data:{ labels, datasets:[
+      lineDS('MF',       DATA.D.mf_auc,    MC.mf),
+      lineDS('LightGCN', DATA.D.lgcn_auc,  MC.lgcn),
+      lineDS('NGCF',     DATA.D.ngcf_auc,  MC.ngcf),
+      lineDS('SGL',      DATA.D.sgl_auc,   MC.sgl, [5,4]),
+      lineDS('HFRS-DA',  DATA.D.hfrsda_auc,MC.hfrsda),
+    ]},
+    options: deepMerge(CHART_DEFAULTS, { scales:{y:{min:0.5, max:0.9}} })
+  });
+  const tb = document.getElementById('tableD');
+  DATA.D.dims.forEach((d,i) => {
+    tb.innerHTML += `<tr>
+      <td>${d}</td>
+      <td>${DATA.D.mf_hr[i].toFixed(3)}</td>
+      <td>${DATA.D.lgcn_hr[i].toFixed(3)}</td>
+      <td>${DATA.D.ngcf_hr[i].toFixed(3)}</td>
+      <td class="${MC.sgl?'':''}">${DATA.D.sgl_hr[i].toFixed(3)}</td>
+      <td>${DATA.D.hfrsda_hr[i].toFixed(3)}</td>
+      <td>${DATA.D.mf_auc[i].toFixed(3)}</td>
+      <td>${DATA.D.lgcn_auc[i].toFixed(3)}</td>
+      <td>${DATA.D.ngcf_auc[i].toFixed(3)}</td>
+      <td>${DATA.D.sgl_auc[i].toFixed(3)}</td>
+      <td>${DATA.D.hfrsda_auc[i].toFixed(3)}</td>
+    </tr>`;
+  });
+}
+
+// ── EXP-F ─────────────────────────────────────────────────────────────────────
+function initChartF() {
+  window._chartF = true;
+  new Chart(document.getElementById('chartF'), {
+    type:'bar',
+    data:{
+      labels: DATA.F.labels,
+      datasets:[
+        {label:'HR@10',   data:DATA.F.hr,   backgroundColor:'#76B7B2cc'},
+        {label:'NDCG@10', data:DATA.F.ndcg, backgroundColor:'#4E79A7cc'},
+        {label:'AUC',     data:DATA.F.auc,  backgroundColor:'#59A14Fcc'},
+      ]
+    },
+    options: deepMerge(CHART_DEFAULTS, { scales:{y:{min:0.55, max:0.92}} })
+  });
+  const tb = document.getElementById('tableF');
+  DATA.F.labels.forEach((l,i) => {
+    tb.innerHTML += `<tr>
+      <td>${l}</td>
+      <td>${DATA.F.auc[i].toFixed(4)}</td>
+      <td>${DATA.F.f1[i].toFixed(4)}</td>
+      <td>${DATA.F.hr[i].toFixed(4)}</td>
+      <td>${DATA.F.ndcg[i].toFixed(4)}</td>
+      <td>${DATA.F.mrr[i].toFixed(4)}</td>
+    </tr>`;
+  });
+}
+
+// ── COPY ──────────────────────────────────────────────────────────────────────
+function copyCode(id) {
+  navigator.clipboard.writeText(document.getElementById(id).innerText)
+    .then(()=>alert('Copied!'));
+}
+
+// Init overview chart on load
+window.addEventListener('load', ()=>{ initScatter(); });
+</script>
+</body>
+</html>

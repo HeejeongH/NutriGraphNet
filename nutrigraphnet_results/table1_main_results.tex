@@ -1,0 +1,36 @@
+% ==========================================================
+%  Table 1: Comparison of Recommendation Models
+%  Dataset: NutriGraphNet (20,820 users / 31,458 foods)
+%  Protocol: 5-fold Cross-Validation (300 epochs / early-stop)
+% ==========================================================
+\begin{table*}[t]
+\centering
+\caption{Performance comparison of food recommendation models on the NutriGraphNet dataset
+         (5-fold cross-validation, mean $\pm$ std).
+         Bold values indicate the best performance per metric.
+         $\dagger$ Health-aware variant; health loss term set to $\lambda_h=0.01$.}
+\label{tab:main_results}
+\setlength{\tabcolsep}{4pt}
+\begin{tabular}{llcccccccc}
+\toprule
+\multirow{2}{*}{\textbf{Type}} &
+\multirow{2}{*}{\textbf{Model}} &
+\multicolumn{2}{c}{\textbf{Classification}} &
+\multicolumn{3}{c}{\textbf{Ranking @5}} &
+\multicolumn{3}{c}{\textbf{Ranking @10}} \\
+\cmidrule(lr){3-4}\cmidrule(lr){5-7}\cmidrule(lr){8-10}
+& & F1 & AUC & HR & NDCG & MRR & HR & NDCG & MRR \\
+\midrule
+Non-graph & MF & 0.5436$_{\pm0.0111}$ & 0.5468$_{\pm0.0107}$ & \textbf{0.6972$_{\pm0.0163}$} & \textbf{0.5975$_{\pm0.0115}$} & \textbf{0.5804$_{\pm0.0097}$} & 0.7604$_{\pm0.0124}$ & \textbf{0.6179$_{\pm0.0103}$} & \textbf{0.5804$_{\pm0.0097}$} \\
+Graph-based & LightGCN & 0.6793$_{\pm0.0006}$ & 0.8218$_{\pm0.0012}$ & 0.6124$_{\pm0.0214}$ & 0.4634$_{\pm0.0153}$ & 0.4386$_{\pm0.0129}$ & 0.7208$_{\pm0.0223}$ & 0.4986$_{\pm0.0157}$ & 0.4386$_{\pm0.0129}$ \\
+Graph-based & NGCF & \textbf{0.7624$_{\pm0.0056}$} & \textbf{0.8777$_{\pm0.0014}$} & 0.6928$_{\pm0.0194}$ & 0.5269$_{\pm0.0233}$ & 0.4915$_{\pm0.0238}$ & \textbf{0.7844$_{\pm0.0209}$} & 0.5569$_{\pm0.0222}$ & 0.4915$_{\pm0.0238}$ \\
+Self-supervised & SGL & 0.6598$_{\pm0.0019}$ & 0.6989$_{\pm0.0027}$ & 0.2640$_{\pm0.0154}$ & 0.1982$_{\pm0.0115}$ & 0.2089$_{\pm0.0109}$ & 0.3576$_{\pm0.0234}$ & 0.2283$_{\pm0.0140}$ & 0.2089$_{\pm0.0109}$ \\
+Health-aware$^\dagger$ & HFRSDA & 0.7200$_{\pm0.0164}$ & 0.8551$_{\pm0.0103}$ & 0.6730$_{\pm0.0266}$ & 0.5780$_{\pm0.0182}$ & 0.5635$_{\pm0.0142}$ & 0.7340$_{\pm0.0222}$ & 0.5977$_{\pm0.0152}$ & 0.5635$_{\pm0.0142}$ \\
+\bottomrule
+\end{tabular}
+\vspace{1mm}
+\footnotesize
+\textit{Note}: HR = Hit Rate; NDCG = Normalized Discounted Cumulative Gain; MRR = Mean Reciprocal Rank.
+All values are averaged over 5 folds. SGL uses contrastive self-supervised augmentation
+but underperforms on ranking metrics due to graph augmentation collapse on sparse nutrition data.
+\end{table*}
