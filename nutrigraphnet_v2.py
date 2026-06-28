@@ -933,7 +933,7 @@ def ranking_metrics(model, data, device, k_list=(5, 10, 20), max_users=300):
 
 
 def ranking_metrics_from_z(z_dict, decoder, data, device, health_scores=None,
-                           k_list=(5, 10, 20), max_users=200,
+                           k_list=(5, 10, 20), max_users=500,
                            score_batch=512, n_neg_sample=100):
     """
     Compute HR@K, NDCG@K, MRR, HealthGain@K.
@@ -1229,11 +1229,18 @@ def evaluate_model(model, data, criterion, device, compute_rank=False):
 
 # Baseline training (simpler loop, no contrastive)
 def train_baseline_epoch(model, optimizer, train_data, criterion, device,
-                         model_type='mf'):
+                         model_type='mf', batch_size=4096):
     model.train()
     eil, el, pos_ei, neg_ei = _prepare_pairs(train_data, device)
 
     hs = _get_food_health(train_data, device)
+
+    # Sub-sample pairs to limit memory (esp. HFRSDA attention is expensive)
+    n_pairs = min(pos_ei.shape[1], batch_size)
+    idx = torch.randperm(pos_ei.shape[1], device=device)[:n_pairs]
+    pos_ei = pos_ei[:, idx]
+    neg_ei = neg_ei[:, idx]
+
     ph = hs[pos_ei[1]] if hs is not None else None
     nh = hs[neg_ei[1]] if hs is not None else None
 
@@ -1321,14 +1328,19 @@ def eval_baseline(model, data, criterion, device, model_type='mf',
 
 
 def _eval_baseline_rank(model, data, device, out_dict, kw, model_type,
-                        max_users=200, n_neg_sample=100):
+                        max_users=500, n_neg_sample=100):
     """
     Compute ranking metrics for baseline models using Sampled-100 protocol.
 
     RecSys 논문 표준과 동일한 방식:
     각 user의 positive food 1개 + random negative 100개 = 101개 후보 중 ranking.
     NutriGraphNet v2의 ranking_metrics_from_z와 완전히 동일한 프로토콜 적용.
+
+    HFRSDA는 MultiheadAttention forward cost를 고려해 max_users를 200으로 제한.
     """
+    # HFRSDA attention-based scoring is expensive per user
+    if model_type == 'hfrsda':
+        max_users = min(max_users, 200)
     # CPU numpy 처리
     eil_cpu = data[('user','eats','food')].edge_label_index.cpu()
     el_cpu  = data[('user','eats','food')].edge_label.cpu()
@@ -1360,15 +1372,18 @@ def _eval_baseline_rank(model, data, device, out_dict, kw, model_type,
         else:
             u_e, f_e = model.u_emb.weight.detach(), model.f_emb.weight.detach()
     elif model_type == 'hfrsda':
-        # HFRS-DA: use NLA embeddings (user + food raw embeddings through attn)
-        u_e = model.u_emb.weight.detach()
-        f_e = model.f_emb.weight.detach()
+        # HFRS-DA: use model.forward() directly for each candidate set
+        # (raw embedding dot-product would bypass the NLA attention, causing
+        #  train/eval inconsistency — fixed by calling forward per user)
+        u_e = None
+        f_e = None
     else:
         u_e = model.u_emb.weight.detach()
         f_e = model.f_emb.weight.detach()
 
     num_foods     = data['food'].num_nodes
-    num_users_emb = u_e.shape[0]
+    num_users_emb = (u_e.shape[0] if u_e is not None
+                     else model.num_users)  # HFRSDA: use model attr
 
     # User sampling
     unique_users = np.unique(pos_users_np)
@@ -1408,9 +1423,19 @@ def _eval_baseline_rank(model, data, device, out_dict, kw, model_type,
         # candidates[0] = target, candidates[1:] = negatives
         candidates = np.array([target_food] + list(neg_sample), dtype=np.int64)
 
-        # Dot product scores (embedding lookup)
+        # Score candidates
         cand_t = torch.tensor(candidates, dtype=torch.long, device=device)
-        scores_c = (u_e[u_idx].unsqueeze(0) * f_e[cand_t]).sum(-1).cpu().float().numpy()
+        if model_type == 'hfrsda':
+            # Call model.forward() to include NLA attention
+            u_t  = torch.full((len(cand_t),), u_idx, dtype=torch.long, device=device)
+            hs_arg = kw.get('health_scores', None)
+            with torch.no_grad():
+                scores_c = model(
+                    torch.stack([u_t, cand_t]),
+                    health_scores=hs_arg
+                ).cpu().float().numpy()
+        else:
+            scores_c = (u_e[u_idx].unsqueeze(0) * f_e[cand_t]).sum(-1).cpu().float().numpy()
 
         sorted_local = np.argsort(-scores_c)
         target_local_rank = int(np.where(sorted_local == 0)[0][0]) + 1
@@ -2067,7 +2092,7 @@ def main():
     parser.add_argument('--weight_decay',    type=float, default=1e-4)
     parser.add_argument('--patience',        type=int, default=30)
     # Loss
-    parser.add_argument('--lambda_health',   type=float, default=0.1)
+    parser.add_argument('--lambda_health',   type=float, default=0.01)  # paper: λ_h=0.01
     parser.add_argument('--lambda_cl',       type=float, default=0.05)
     parser.add_argument('--temperature',     type=float, default=0.2)
     parser.add_argument('--margin',          type=float, default=0.5)
