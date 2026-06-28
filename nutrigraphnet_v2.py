@@ -458,8 +458,6 @@ class LightGCN(nn.Module):
         u_e, f_e = self.u_emb.weight, self.f_emb.weight
         all_u, all_f = [u_e], [f_e]
         for _ in range(self.num_layers):
-            # Symmetric normalisation applied per-node (not per-edge)
-            # avoids vanishing scale for high-degree nodes
             msg_u2f = u_e[src] * norm_u[src].unsqueeze(-1)   # [E, D]
             msg_f2u = f_e[dst] * norm_f[dst].unsqueeze(-1)   # [E, D]
             new_f = torch.zeros(self.num_foods, D, device=device)\
@@ -469,7 +467,11 @@ class LightGCN(nn.Module):
             u_e, f_e = new_u, new_f
             all_u.append(u_e); all_f.append(f_e)
 
-        return torch.stack(all_u).mean(0), torch.stack(all_f).mean(0)
+        # L2-normalise final embedding so dot-product = cosine similarity
+        # Prevents vanishing scale from multi-layer aggregation
+        u_out = F.normalize(torch.stack(all_u).mean(0), dim=-1)
+        f_out = F.normalize(torch.stack(all_f).mean(0), dim=-1)
+        return u_out, f_out
 
     def forward(self, edge_label_index, train_edge_index=None, **kw):
         device = edge_label_index.device
@@ -553,9 +555,9 @@ class NGCF(nn.Module):
             u_all.append(u_e)
             f_all.append(f_e)
 
-        # Concatenate all layers (NGCF paper eq.11)
-        u_final = torch.cat(u_all, dim=-1)   # [U, D*(L+1)]
-        f_final = torch.cat(f_all, dim=-1)   # [F, D*(L+1)]
+        # Concatenate all layers (NGCF paper eq.11) + L2 normalise
+        u_final = F.normalize(torch.cat(u_all, dim=-1), dim=-1)
+        f_final = F.normalize(torch.cat(f_all, dim=-1), dim=-1)
         return u_final, f_final
 
     def forward(self, edge_label_index, train_edge_index=None, **kw):
@@ -625,7 +627,10 @@ class SGL(nn.Module):
             all_u.append(u_e)
             all_f.append(f_e)
 
-        return torch.stack(all_u).mean(0), torch.stack(all_f).mean(0)
+        # L2-normalise final embedding so dot-product = cosine similarity
+        u_out = F.normalize(torch.stack(all_u).mean(0), dim=-1)
+        f_out = F.normalize(torch.stack(all_f).mean(0), dim=-1)
+        return u_out, f_out
 
     def ssl_loss(self, train_ei, device, user_idx, food_idx):
         """InfoNCE contrastive loss between two augmented views."""
