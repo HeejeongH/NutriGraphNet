@@ -1247,6 +1247,7 @@ def train_baseline_epoch(model, optimizer, train_data, criterion, device,
         ssl = model.ssl_loss(train_ei, device, u_idx, f_idx)
         loss = loss + ssl
         ld['ssl'] = ssl.item()
+        ld['cl']  = ssl.item()   # align key with mean-results aggregation
 
     loss.backward()
     torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
@@ -1523,7 +1524,9 @@ def run_fold(fold, train_data, val_data, test_data, args, device, variant='full'
         history['lr'].append(lr)
 
         if (epoch + 1) % args.print_every == 0:
-            print(f"    Ep{epoch+1:3d} | Loss={tl:.4f} | "
+            bpr_v = tm.get('bpr', tl)
+            cl_v  = tm.get('cl', tm.get('ssl', 0.0))
+            print(f"    Ep{epoch+1:3d} | Loss={tl:.4f} | bpr={bpr_v:.4f} | cl={cl_v:.4f} | "
                   f"valF1={vm.get('f1',0):.4f} | "
                   f"valAUC={vm.get('auc',0.5):.4f} | lr={lr:.2e}")
 
@@ -2040,7 +2043,7 @@ def main():
     parser.add_argument('--seed',            type=int, default=42)
     # Experiment
     parser.add_argument('--output_dir',      default='results/v2_experiments')
-    parser.add_argument('--print_every',     type=int, default=20)
+    parser.add_argument('--print_every',     type=int, default=5)
     parser.add_argument('--variants',        default='full',
                         help=('comma-sep: full,no_health,no_cl,no_dual,'
                               'mf,lightgcn,ngcf,sgl,hfrsda'))
