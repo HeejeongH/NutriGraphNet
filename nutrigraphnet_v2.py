@@ -17,7 +17,7 @@ for Personalized Food Recommendation
 7. [Training] OneCycleLR with warmup
 8. [Evaluation] NDCG@K, HR@K, MRR, HealthGain@K
 9. [Eval] Statistical significance test (Wilcoxon)
-10. [Baseline] MF, LightGCN 비교 모델
+10. [Baseline] MF, LightGCN, NGCF, SGL, HFRS-DA 비교 모델
 
 Author: Heejeong
 Date: 2026-06-27
@@ -476,6 +476,270 @@ class LightGCN(nn.Module):
             u_e, f_e = self.u_emb.weight, self.f_emb.weight
         u, f = edge_label_index[0], edge_label_index[1]
         return (u_e[u] * f_e[f]).sum(-1)
+
+
+# ============================================================================
+# 4b. ADDITIONAL BASELINES: NGCF, SGL, HFRS-DA
+# ============================================================================
+
+class NGCF(nn.Module):
+    """
+    Neural Graph Collaborative Filtering (Wang et al., SIGIR 2019).
+    Bipartite user-food graph with explicit interaction-based message passing.
+    Embedding propagation with element-wise product interaction term.
+    """
+    def __init__(self, num_users, num_foods, emb_dim=64, num_layers=3,
+                 dropout=0.1):
+        super().__init__()
+        self.num_users = num_users
+        self.num_foods = num_foods
+        self.num_layers = num_layers
+        self.dropout = dropout
+        emb_dim = emb_dim  # keep consistent with caller
+
+        self.u_emb = nn.Embedding(num_users, emb_dim)
+        self.f_emb = nn.Embedding(num_foods, emb_dim)
+        nn.init.xavier_uniform_(self.u_emb.weight)
+        nn.init.xavier_uniform_(self.f_emb.weight)
+
+        # Per-layer transformation matrices (W1, W2 in paper)
+        self.W1 = nn.ModuleList([nn.Linear(emb_dim, emb_dim, bias=False)
+                                 for _ in range(num_layers)])
+        self.W2 = nn.ModuleList([nn.Linear(emb_dim, emb_dim, bias=False)
+                                 for _ in range(num_layers)])
+
+    def _propagate(self, train_ei, device):
+        src, dst = train_ei[0], train_ei[1]   # src=user, dst=food
+        D = self.u_emb.weight.shape[1]
+        num_users, num_foods = self.num_users, self.num_foods
+
+        # Degree normalisation
+        deg_u = torch.zeros(num_users, device=device)
+        deg_f = torch.zeros(num_foods, device=device)
+        ones  = torch.ones(src.shape[0], device=device)
+        deg_u.scatter_add_(0, src, ones)
+        deg_f.scatter_add_(0, dst, ones)
+        norm = 1.0 / ((deg_u[src] * deg_f[dst]).clamp(min=1).sqrt())  # [E]
+
+        u_e = self.u_emb.weight  # [U, D]
+        f_e = self.f_emb.weight  # [F, D]
+
+        u_all, f_all = [u_e], [f_e]
+        src_e = src.unsqueeze(-1).expand(-1, D)
+        dst_e = dst.unsqueeze(-1).expand(-1, D)
+        norm_e = norm.unsqueeze(-1)
+
+        for l in range(self.num_layers):
+            # Food → User messages
+            msg_f2u_1 = f_e[dst] * norm_e                     # neighbour term
+            msg_f2u_2 = f_e[dst] * u_e[src] * norm_e         # interaction term
+            agg_u = torch.zeros_like(u_e)
+            agg_u.scatter_add_(0, src_e, msg_f2u_1 + msg_f2u_2)
+            new_u = F.leaky_relu(self.W1[l](u_e) + self.W2[l](agg_u))
+            new_u = F.dropout(new_u, p=self.dropout, training=self.training)
+
+            # User → Food messages
+            msg_u2f_1 = u_e[src] * norm_e
+            msg_u2f_2 = u_e[src] * f_e[dst] * norm_e
+            agg_f = torch.zeros_like(f_e)
+            agg_f.scatter_add_(0, dst_e, msg_u2f_1 + msg_u2f_2)
+            new_f = F.leaky_relu(self.W1[l](f_e) + self.W2[l](agg_f))
+            new_f = F.dropout(new_f, p=self.dropout, training=self.training)
+
+            u_e, f_e = new_u, new_f
+            u_all.append(u_e)
+            f_all.append(f_e)
+
+        # Concatenate all layers (NGCF paper eq.11)
+        u_final = torch.cat(u_all, dim=-1)   # [U, D*(L+1)]
+        f_final = torch.cat(f_all, dim=-1)   # [F, D*(L+1)]
+        return u_final, f_final
+
+    def forward(self, edge_label_index, train_edge_index=None, **kw):
+        device = edge_label_index.device
+        if train_edge_index is not None:
+            u_e, f_e = self._propagate(train_edge_index, device)
+        else:
+            u_e = torch.cat([self.u_emb.weight] * (self.num_layers + 1), dim=-1)
+            f_e = torch.cat([self.f_emb.weight] * (self.num_layers + 1), dim=-1)
+        u, f = edge_label_index[0], edge_label_index[1]
+        return (u_e[u] * f_e[f]).sum(-1)
+
+
+class SGL(nn.Module):
+    """
+    Self-supervised Graph Learning (Wu et al., SIGIR 2021).
+    LightGCN backbone + graph augmentation contrastive loss.
+    Augmentation: node dropout (ED variant used in paper).
+    During inference: standard LightGCN scoring.
+    CL loss is computed in train loop (see train_sgl_epoch).
+    """
+    def __init__(self, num_users, num_foods, emb_dim=64, num_layers=3,
+                 ssl_temp=0.2, ssl_lambda=0.1, aug_ratio=0.1):
+        super().__init__()
+        self.num_users = num_users
+        self.num_foods = num_foods
+        self.num_layers = num_layers
+        self.ssl_temp   = ssl_temp
+        self.ssl_lambda = ssl_lambda
+        self.aug_ratio  = aug_ratio
+
+        self.u_emb = nn.Embedding(num_users, emb_dim)
+        self.f_emb = nn.Embedding(num_foods, emb_dim)
+        nn.init.normal_(self.u_emb.weight, std=0.01)
+        nn.init.normal_(self.f_emb.weight, std=0.01)
+
+    def _lightgcn_prop(self, train_ei, device, dropout_ratio=0.0):
+        """LightGCN propagation with optional edge dropout for augmentation."""
+        src, dst = train_ei[0], train_ei[1]
+        if dropout_ratio > 0 and self.training:
+            mask = torch.rand(src.shape[0], device=device) > dropout_ratio
+            src, dst = src[mask], dst[mask]
+
+        D = self.u_emb.weight.shape[1]
+        deg_u = torch.zeros(self.num_users, device=device)
+        deg_f = torch.zeros(self.num_foods, device=device)
+        ones  = torch.ones(src.shape[0], device=device)
+        deg_u.scatter_add_(0, src, ones)
+        deg_f.scatter_add_(0, dst, ones)
+        norm = 1.0 / ((deg_u[src] * deg_f[dst]).clamp(min=1).sqrt())
+
+        src_e = src.unsqueeze(-1).expand(-1, D)
+        dst_e = dst.unsqueeze(-1).expand(-1, D)
+        norm_e = norm.unsqueeze(-1)
+
+        u_e, f_e = self.u_emb.weight, self.f_emb.weight
+        all_u, all_f = [u_e], [f_e]
+        for _ in range(self.num_layers):
+            new_f = torch.zeros_like(f_e)
+            new_f.scatter_add_(0, dst_e, u_e[src] * norm_e)
+            new_u = torch.zeros_like(u_e)
+            new_u.scatter_add_(0, src_e, f_e[dst] * norm_e)
+            u_e, f_e = new_u, new_f
+            all_u.append(u_e)
+            all_f.append(f_e)
+
+        return torch.stack(all_u).mean(0), torch.stack(all_f).mean(0)
+
+    def ssl_loss(self, train_ei, device, user_idx, food_idx):
+        """InfoNCE contrastive loss between two augmented views."""
+        u1, f1 = self._lightgcn_prop(train_ei, device, self.aug_ratio)
+        u2, f2 = self._lightgcn_prop(train_ei, device, self.aug_ratio)
+
+        # User-side CL
+        u1_s = F.normalize(u1[user_idx], dim=-1)
+        u2_s = F.normalize(u2[user_idx], dim=-1)
+        pos_u = (u1_s * u2_s).sum(-1) / self.ssl_temp
+        neg_u = (u1_s @ u2_s.T) / self.ssl_temp
+        cl_u  = -pos_u + torch.logsumexp(neg_u, dim=-1)
+
+        # Food-side CL
+        f1_s = F.normalize(f1[food_idx], dim=-1)
+        f2_s = F.normalize(f2[food_idx], dim=-1)
+        pos_f = (f1_s * f2_s).sum(-1) / self.ssl_temp
+        neg_f = (f1_s @ f2_s.T) / self.ssl_temp
+        cl_f  = -pos_f + torch.logsumexp(neg_f, dim=-1)
+
+        return (cl_u.mean() + cl_f.mean()) * self.ssl_lambda
+
+    def forward(self, edge_label_index, train_edge_index=None, **kw):
+        device = edge_label_index.device
+        if train_edge_index is not None:
+            u_e, f_e = self._lightgcn_prop(train_edge_index, device, 0.0)
+        else:
+            u_e, f_e = self.u_emb.weight, self.f_emb.weight
+        u, f = edge_label_index[0], edge_label_index[1]
+        return (u_e[u] * f_e[f]).sum(-1)
+
+
+class HFRSDAModel(nn.Module):
+    """
+    HFRS-DA: Health-aware Food Recommendation System with Dual Attention
+    (Heterogeneous Graphs). Simplified re-implementation based on:
+      Tran et al., Computers in Biology and Medicine, 2024.
+      DOI: 10.1016/j.compbiomed.2023.107879
+
+    Architecture:
+      - Node-Level Attention (NLA): GAT on user-food-ingredient meta-paths
+        capturing user preference signals.
+      - Semantic-Level Attention (SLA): health-score-weighted attention
+        biasing recommendations toward nutritionally superior foods.
+      - Final score: α * NLA_score + (1-α) * SLA_score
+    """
+    def __init__(self, num_users, num_foods, num_ingredients,
+                 emb_dim=64, num_heads=4, dropout=0.1,
+                 health_alpha=0.3):
+        super().__init__()
+        self.num_users = num_users
+        self.num_foods = num_foods
+        self.health_alpha = health_alpha  # weight of health branch
+
+        # Node embeddings
+        self.u_emb = nn.Embedding(num_users, emb_dim)
+        self.f_emb = nn.Embedding(num_foods, emb_dim)
+        self.i_emb = nn.Embedding(max(num_ingredients, 1), emb_dim)
+        nn.init.xavier_uniform_(self.u_emb.weight)
+        nn.init.xavier_uniform_(self.f_emb.weight)
+        nn.init.xavier_uniform_(self.i_emb.weight)
+
+        # NLA: multi-head self-attention on user/food embeddings
+        self.nla_attn = nn.MultiheadAttention(emb_dim, num_heads,
+                                              dropout=dropout, batch_first=True)
+        self.nla_norm = nn.LayerNorm(emb_dim)
+        self.nla_proj = nn.Linear(emb_dim, emb_dim)
+
+        # SLA: food-health scoring head
+        self.sla_health_proj = nn.Sequential(
+            nn.Linear(emb_dim, emb_dim // 2),
+            nn.ReLU(),
+            nn.Linear(emb_dim // 2, 1),
+        )
+
+        # Final scorer
+        self.scorer = nn.Linear(emb_dim * 2, 1)
+        self.dropout = dropout
+
+    def _nla_forward(self, u_idx, f_idx):
+        """Node-Level Attention: attend over food neighborhood of user."""
+        u_e = self.u_emb(u_idx)          # [B, D]
+        f_e = self.f_emb(f_idx)          # [B, D]
+
+        # Stack as sequence for self-attention: [B, 2, D]
+        seq = torch.stack([u_e, f_e], dim=1)
+        attn_out, _ = self.nla_attn(seq, seq, seq)
+        attn_out = self.nla_norm(attn_out + seq)
+        u_out = F.dropout(attn_out[:, 0], p=self.dropout, training=self.training)
+        f_out = F.dropout(attn_out[:, 1], p=self.dropout, training=self.training)
+        return u_out, f_out
+
+    def _sla_forward(self, f_idx, health_scores=None):
+        """Semantic-Level Attention: health-weighted food representation."""
+        f_e = self.f_emb(f_idx)               # [B, D]
+        h_score = self.sla_health_proj(f_e)   # [B, 1]
+        if health_scores is not None:
+            # Incorporate external health signal
+            ext_h = health_scores[f_idx].unsqueeze(-1)  # [B, 1]
+            h_score = h_score + ext_h
+        h_weight = torch.sigmoid(h_score)              # [B, 1]
+        return f_e * h_weight                          # [B, D]
+
+    def forward(self, edge_label_index, health_scores=None, **kw):
+        u_idx = edge_label_index[0]
+        f_idx = edge_label_index[1]
+
+        # NLA branch
+        u_nla, f_nla = self._nla_forward(u_idx, f_idx)
+        nla_score = (u_nla * f_nla).sum(-1)           # [B]
+
+        # SLA branch (health-aware)
+        f_sla = self._sla_forward(f_idx, health_scores)
+        u_e   = self.u_emb(u_idx)
+        sla_score = (u_e * f_sla).sum(-1)             # [B]
+
+        # Weighted combination
+        score = ((1 - self.health_alpha) * nla_score
+                 + self.health_alpha * sla_score)
+        return score
 
 
 # ============================================================================
@@ -959,12 +1223,31 @@ def train_baseline_epoch(model, optimizer, train_data, criterion, device,
     nh = hs[neg_ei[1]] if hs is not None else None
 
     optimizer.zero_grad()
+    train_ei = train_data[('user','eats','food')].edge_index.to(device)
+
     kw = {}
-    if model_type == 'lightgcn':
-        kw['train_edge_index'] = train_data[('user','eats','food')].edge_index.to(device)
+    if model_type in ('lightgcn', 'ngcf', 'sgl'):
+        kw['train_edge_index'] = train_ei
+    if model_type == 'hfrsda':
+        kw['health_scores'] = hs
+
     ps = model(pos_ei, **kw)
     ns = model(neg_ei, **kw)
     loss, ld = criterion(ps, ns, ph, nh)
+
+    # SGL: add SSL contrastive loss
+    if model_type == 'sgl':
+        u_idx = pos_ei[0].unique()
+        f_idx = pos_ei[1].unique()
+        # Limit size to avoid OOM
+        if u_idx.shape[0] > 512:
+            u_idx = u_idx[torch.randperm(u_idx.shape[0])[:512]]
+        if f_idx.shape[0] > 512:
+            f_idx = f_idx[torch.randperm(f_idx.shape[0])[:512]]
+        ssl = model.ssl_loss(train_ei, device, u_idx, f_idx)
+        loss = loss + ssl
+        ld['ssl'] = ssl.item()
+
     loss.backward()
     torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
     optimizer.step()
@@ -976,14 +1259,16 @@ def eval_baseline(model, data, criterion, device, model_type='mf',
                   train_ei=None, compute_rank=False):
     model.eval()
     eil, el, pos_ei, neg_ei = _prepare_pairs(data, device)
+    hs = _get_food_health(data, device)
 
     kw = {}
-    if model_type == 'lightgcn' and train_ei is not None:
+    if model_type in ('lightgcn', 'ngcf', 'sgl') and train_ei is not None:
         kw['train_edge_index'] = train_ei
+    if model_type == 'hfrsda':
+        kw['health_scores'] = hs
 
     ps = model(pos_ei, **kw)
     ns = model(neg_ei, **kw)
-    hs = _get_food_health(data, device)
     ph = hs[pos_ei[1]] if hs is not None else None
     nh = hs[neg_ei[1]] if hs is not None else None
 
@@ -994,7 +1279,6 @@ def eval_baseline(model, data, criterion, device, model_type='mf',
     out = {**ld, **cm}
 
     if compute_rank:
-        # Ranking for baselines using embedding-based scoring
         _eval_baseline_rank(model, data, device, out, kw, model_type)
 
     return loss.item(), out
@@ -1028,13 +1312,20 @@ def _eval_baseline_rank(model, data, device, out_dict, kw, model_type,
     if model_type == 'mf':
         u_e = model.u_emb.weight.detach()
         f_e = model.f_emb.weight.detach()
-    else:  # lightgcn
+    elif model_type in ('lightgcn', 'ngcf', 'sgl'):
         if 'train_edge_index' in kw:
             u_e, f_e = model._propagate(kw['train_edge_index'], device)
             u_e = u_e.detach()
             f_e = f_e.detach()
         else:
             u_e, f_e = model.u_emb.weight.detach(), model.f_emb.weight.detach()
+    elif model_type == 'hfrsda':
+        # HFRS-DA: use NLA embeddings (user + food raw embeddings through attn)
+        u_e = model.u_emb.weight.detach()
+        f_e = model.f_emb.weight.detach()
+    else:
+        u_e = model.u_emb.weight.detach()
+        f_e = model.f_emb.weight.detach()
 
     num_foods     = data['food'].num_nodes
     num_users_emb = u_e.shape[0]
@@ -1111,22 +1402,36 @@ def run_fold(fold, train_data, val_data, test_data, args, device, variant='full'
     """Train one fold and return test metrics."""
 
     # ── Build model ──
+    n_users = train_data['user'].num_nodes
+    n_foods = train_data['food'].num_nodes
+    n_ingr  = train_data['ingredient'].num_nodes if 'ingredient' in train_data.node_types else 1
+
     if variant == 'mf':
-        model = MatrixFactorization(
-            train_data['user'].num_nodes,
-            train_data['food'].num_nodes,
-            args.out_channels
-        ).to(device)
+        model = MatrixFactorization(n_users, n_foods, args.out_channels).to(device)
         mtype = 'mf'
     elif variant == 'lightgcn':
-        model = LightGCN(
-            train_data['user'].num_nodes,
-            train_data['food'].num_nodes,
-            args.out_channels, 3
-        ).to(device)
+        model = LightGCN(n_users, n_foods, args.out_channels, 3).to(device)
         mtype = 'lightgcn'
+    elif variant == 'ngcf':
+        model = NGCF(n_users, n_foods, args.out_channels,
+                     num_layers=3, dropout=args.dropout).to(device)
+        mtype = 'ngcf'
+    elif variant == 'sgl':
+        model = SGL(n_users, n_foods, args.out_channels,
+                    num_layers=3,
+                    ssl_temp=getattr(args, 'sgl_temp', 0.2),
+                    ssl_lambda=getattr(args, 'sgl_lambda', 0.1),
+                    aug_ratio=getattr(args, 'sgl_aug', 0.1)).to(device)
+        mtype = 'sgl'
+    elif variant == 'hfrsda':
+        model = HFRSDAModel(n_users, n_foods, n_ingr,
+                            emb_dim=args.out_channels,
+                            num_heads=max(1, args.heads),
+                            dropout=args.dropout,
+                            health_alpha=getattr(args, 'hfrsda_alpha', 0.3)).to(device)
+        mtype = 'hfrsda'
     else:
-        # Ablation flags
+        # NutriGraphNet ablation variants
         use_dual   = 'no_dual'   not in variant
         use_health = 'no_health' not in variant
         use_cl     = 'no_cl'     not in variant
@@ -1148,6 +1453,7 @@ def run_fold(fold, train_data, val_data, test_data, args, device, variant='full'
         mtype = 'gnn'
 
     # Lazy init FIRST (before counting params)
+    train_ei_ref = train_data[('user','eats','food')].edge_index.to(device)
     with torch.no_grad():
         _x  = {k: v.to(device) for k, v in train_data.x_dict.items()}
         _ei = {k: v.to(device) for k, v in train_data.edge_index_dict.items()}
@@ -1156,9 +1462,10 @@ def run_fold(fold, train_data, val_data, test_data, args, device, variant='full'
             model(_x, _ei, _eil)
         elif mtype == 'mf':
             model(_eil)
-        else:
-            model(_eil,
-                  train_edge_index=train_data[('user','eats','food')].edge_index.to(device))
+        elif mtype == 'hfrsda':
+            model(_eil)
+        else:  # lightgcn, ngcf, sgl
+            model(_eil, train_edge_index=train_ei_ref)
     gc_collect()
 
     n_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
@@ -1167,13 +1474,13 @@ def run_fold(fold, train_data, val_data, test_data, args, device, variant='full'
     # ── Criterion ──
     lh  = args.lambda_health if ('no_health' not in variant and mtype == 'gnn') else 0.0
     lcl = args.lambda_cl     if ('no_cl'     not in variant and mtype == 'gnn') else 0.0
+    # HFRS-DA has its own internal health branch — keep BPR only
     criterion = NutriLoss(lambda_health=lh, lambda_cl=lcl,
                           temperature=args.temperature)
 
     # ── Optimizer / Scheduler ──
     optimizer = AdamW(model.parameters(), lr=args.lr,
                       weight_decay=args.weight_decay, betas=(0.9, 0.999))
-    # Use CosineAnnealingWarmRestarts instead of OneCycleLR for stability
     from torch.optim.lr_scheduler import CosineAnnealingWarmRestarts
     scheduler = CosineAnnealingWarmRestarts(
         optimizer, T_0=max(10, args.epochs // 3), T_mult=1,
@@ -1185,8 +1492,7 @@ def run_fold(fold, train_data, val_data, test_data, args, device, variant='full'
     history = {'train_loss': [], 'val_loss': [],
                'val_f1': [], 'val_auc': [], 'lr': []}
     best_metrics = None
-
-    train_ei_ref = train_data[('user','eats','food')].edge_index.to(device)
+    # train_ei_ref already defined during lazy init above
 
     for epoch in range(args.epochs):
         if mtype == 'gnn':
@@ -1470,10 +1776,14 @@ def generate_latex_table(all_results, output_dir, sig_results=None):
                    'NDCG@5', 'NDCG@10', 'NDCG@20',
                    'MRR', 'HealthGain@5', 'HealthGain@10']
 
-    order = ['mf', 'lightgcn', 'no_dual', 'no_health', 'no_cl', 'full']
+    order = ['mf', 'lightgcn', 'ngcf', 'sgl', 'hfrsda',
+             'no_dual', 'no_health', 'no_cl', 'full']
     names = {
-        'mf':        'MF',
-        'lightgcn':  'LightGCN',
+        'mf':        r'MF~\cite{koren2009matrix}',
+        'lightgcn':  r'LightGCN~\cite{he2020lightgcn}',
+        'ngcf':      r'NGCF~\cite{wang2019neural}',
+        'sgl':       r'SGL~\cite{wu2021self}',
+        'hfrsda':    r'HFRS-DA~\cite{tran2024hfrsda}',
         'no_dual':   r'NGN$_{\text{-D}}$',
         'no_health': r'NGN$_{\text{-H}}$',
         'no_cl':     r'NGN$_{\text{-CL}}$',
@@ -1640,9 +1950,11 @@ def plot_ablation_comparison(all_results, output_dir):
     Grouped bar chart for ablation study.
     논문 Figure: ablation bar chart (HR@10, NDCG@10, MRR).
     """
-    order   = ['mf', 'lightgcn', 'no_dual', 'no_health', 'no_cl', 'full']
+    order   = ['mf', 'lightgcn', 'ngcf', 'sgl', 'hfrsda',
+               'no_dual', 'no_health', 'no_cl', 'full']
     labels  = {
         'mf':        'MF', 'lightgcn': 'LightGCN',
+        'ngcf':      'NGCF', 'sgl': 'SGL', 'hfrsda': 'HFRS-DA',
         'no_dual':   'NGN-D', 'no_health': 'NGN-H',
         'no_cl':     'NGN-CL', 'full': 'NutriGraphNet\nv2 (Full)',
     }
@@ -1726,7 +2038,17 @@ def main():
     parser.add_argument('--output_dir',      default='results/v2_experiments')
     parser.add_argument('--print_every',     type=int, default=20)
     parser.add_argument('--variants',        default='full',
-                        help='comma-sep: full,no_health,no_cl,no_dual,mf,lightgcn')
+                        help=('comma-sep: full,no_health,no_cl,no_dual,'
+                              'mf,lightgcn,ngcf,sgl,hfrsda'))
+    # New baseline hyperparams
+    parser.add_argument('--sgl_temp',        type=float, default=0.2,
+                        help='SGL InfoNCE temperature (default: 0.2)')
+    parser.add_argument('--sgl_lambda',      type=float, default=0.1,
+                        help='SGL SSL loss weight (default: 0.1)')
+    parser.add_argument('--sgl_aug',         type=float, default=0.1,
+                        help='SGL edge dropout ratio for augmentation (default: 0.1)')
+    parser.add_argument('--hfrsda_alpha',    type=float, default=0.3,
+                        help='HFRS-DA health branch weight α (default: 0.3)')
     # Lambda sweep (for sensitivity analysis)
     parser.add_argument('--lambda_sweep',    action='store_true',
                         help='Run lambda_health sensitivity sweep (0.001~1.0)')
@@ -1851,7 +2173,8 @@ def main():
     print(f"{'='*80}")
     hdr = f"{'Model':<20}" + "".join(f"{m:>18}" for m in key_m)
     print(hdr); print("-" * len(hdr))
-    model_order = ['mf', 'lightgcn', 'no_dual', 'no_health', 'no_cl', 'full']
+    model_order = ['mf', 'lightgcn', 'ngcf', 'sgl', 'hfrsda',
+                   'no_dual', 'no_health', 'no_cl', 'full']
     for v in model_order:
         if v not in all_results: continue
         agg = all_results[v]['aggregated']
