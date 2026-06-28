@@ -1,0 +1,39 @@
+% ══════════════════════════════════════════════════════════════════════
+% TABLE 2: NutriGraphNet v2 — Food.com Benchmark (5-fold CV)
+% TODO: replace placeholder values with foodcom_final results
+% Run: python nutrigraphnet_v2.py --data_path data/foodcom/processed_foodcom.pkl
+%      --variants full,no_health,no_cl,no_dual,mf,lightgcn
+%      --n_folds 5 --epochs 300 --patience 40 --lambda_health 0.01
+%      --output_dir results/foodcom_final
+% ══════════════════════════════════════════════════════════════════════
+\begin{table*}[t]
+\centering
+\setlength{\tabcolsep}{4pt}
+\caption{%
+  Performance comparison on the Food.com dataset
+  (9,450 users / 20,429 foods / 238,460 interactions,
+  5-fold cross-validation, Sampled-100 evaluation protocol).
+  \textbf{Bold}: best. \underline{Underline}: second-best.
+  $^*$/$^{**}$: Wilcoxon $p{<}0.05$/$p{<}0.01$ vs.\ \textbf{NutriGraphNet v2}.}
+\label{tab:main_foodcom}
+\resizebox{\textwidth}{!}{%
+\begin{tabular}{lrrrrrrrrr}
+\toprule
+\multicolumn{1}{c}{} &
+\multicolumn{2}{c}{\textit{Classification}} &
+\multicolumn{7}{c}{\textit{Ranking (Sampled-100)}} \\
+\cmidrule(lr){2-3}\cmidrule(lr){4-10}
+\textbf{Model} & \textbf{AUC} & \textbf{F1} &
+\textbf{HR@5} & \textbf{HR@10} & \textbf{HR@20} &
+\textbf{NDCG@5} & \textbf{NDCG@10} & \textbf{NDCG@20} & \textbf{MRR} \\
+\midrule
+MF~\cite{koren2009matrix}       & -- & -- & -- & -- & -- & -- & -- & -- & -- \\
+LightGCN~\cite{he2020lightgcn}  & -- & -- & -- & -- & -- & -- & -- & -- & -- \\
+\midrule
+NGN$_{\text{-D}}$ (w/o dual-ch.) & -- & -- & -- & -- & -- & -- & -- & -- & -- \\
+NGN$_{\text{-H}}$ (w/o health)   & -- & -- & -- & -- & -- & -- & -- & -- & -- \\
+NGN$_{\text{-CL}}$ (w/o CL)      & -- & -- & -- & -- & -- & -- & -- & -- & -- \\
+\textbf{NutriGraphNet v2} (ours) & -- & -- & -- & -- & -- & -- & -- & -- & -- \\
+\bottomrule
+\end{tabular}}
+\end{table*}
