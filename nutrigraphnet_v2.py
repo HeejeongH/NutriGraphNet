@@ -1314,7 +1314,11 @@ def _eval_baseline_rank(model, data, device, out_dict, kw, model_type,
         f_e = model.f_emb.weight.detach()
     elif model_type in ('lightgcn', 'ngcf', 'sgl'):
         if 'train_edge_index' in kw:
-            u_e, f_e = model._propagate(kw['train_edge_index'], device)
+            # SGL uses _lightgcn_prop; LightGCN/NGCF use _propagate
+            if hasattr(model, '_propagate'):
+                u_e, f_e = model._propagate(kw['train_edge_index'], device)
+            else:
+                u_e, f_e = model._lightgcn_prop(kw['train_edge_index'], device, 0.0)
             u_e = u_e.detach()
             f_e = f_e.detach()
         else:
