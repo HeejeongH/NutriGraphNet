@@ -437,33 +437,35 @@ class LightGCN(nn.Module):
         self.num_foods = num_foods
         self.u_emb = nn.Embedding(num_users, emb_dim)
         self.f_emb = nn.Embedding(num_foods, emb_dim)
-        nn.init.normal_(self.u_emb.weight, std=0.01)
-        nn.init.normal_(self.f_emb.weight, std=0.01)
+        nn.init.xavier_uniform_(self.u_emb.weight)
+        nn.init.xavier_uniform_(self.f_emb.weight)
 
     def _propagate(self, train_ei, device):
         src, dst = train_ei[0], train_ei[1]
         D = self.u_emb.weight.shape[1]
 
-        # Degree normalisation (no-grad, degree is structural)
         with torch.no_grad():
             deg_u = torch.zeros(self.num_users, device=device)
             deg_f = torch.zeros(self.num_foods, device=device)
             ones  = torch.ones(src.shape[0], device=device)
             deg_u.scatter_add_(0, src, ones)
             deg_f.scatter_add_(0, dst, ones)
-        norm = 1.0 / ((deg_u[src] * deg_f[dst]).sqrt() + 1e-8)  # [E]
-        norm_exp = norm.unsqueeze(-1)  # [E, 1]
+            # Symmetric normalisation: 1/sqrt(deg_u) per user, 1/sqrt(deg_f) per food
+            # Applied as edge weight = 1/sqrt(deg_u[src]) * 1/sqrt(deg_f[dst])
+            norm_u = (1.0 / deg_u.clamp(min=1).sqrt())  # [U]
+            norm_f = (1.0 / deg_f.clamp(min=1).sqrt())  # [F]
 
         u_e, f_e = self.u_emb.weight, self.f_emb.weight
         all_u, all_f = [u_e], [f_e]
         for _ in range(self.num_layers):
-            # out-of-place aggregation: preserves autograd graph
-            msg_u2f = u_e[src] * norm_exp          # [E, D]
-            msg_f2u = f_e[dst] * norm_exp          # [E, D]
+            # Symmetric normalisation applied per-node (not per-edge)
+            # avoids vanishing scale for high-degree nodes
+            msg_u2f = u_e[src] * norm_u[src].unsqueeze(-1)   # [E, D]
+            msg_f2u = f_e[dst] * norm_f[dst].unsqueeze(-1)   # [E, D]
             new_f = torch.zeros(self.num_foods, D, device=device)\
-                        .index_add(0, dst, msg_u2f)
+                        .index_add(0, dst, msg_u2f) * norm_f.unsqueeze(-1)
             new_u = torch.zeros(self.num_users, D, device=device)\
-                        .index_add(0, src, msg_f2u)
+                        .index_add(0, src, msg_f2u) * norm_u.unsqueeze(-1)
             u_e, f_e = new_u, new_f
             all_u.append(u_e); all_f.append(f_e)
 
@@ -521,30 +523,29 @@ class NGCF(nn.Module):
             ones  = torch.ones(src.shape[0], device=device)
             deg_u.scatter_add_(0, src, ones)
             deg_f.scatter_add_(0, dst, ones)
-        norm = 1.0 / ((deg_u[src] * deg_f[dst]).clamp(min=1).sqrt())  # [E]
+            norm_u = (1.0 / deg_u.clamp(min=1).sqrt())  # [U]
+            norm_f = (1.0 / deg_f.clamp(min=1).sqrt())  # [F]
 
         u_e = self.u_emb.weight  # [U, D]
         f_e = self.f_emb.weight  # [F, D]
 
         u_all, f_all = [u_e], [f_e]
-        src_e = src.unsqueeze(-1).expand(-1, D)
-        dst_e = dst.unsqueeze(-1).expand(-1, D)
-        norm_e = norm.unsqueeze(-1)
-
         for l in range(self.num_layers):
-            # Food → User messages (out-of-place to preserve autograd graph)
-            msg_f2u_1 = f_e[dst] * norm_e
-            msg_f2u_2 = f_e[dst] * u_e[src] * norm_e
+            # Food → User messages (out-of-place, per-node normalisation)
+            msg_f2u_1 = f_e[dst] * norm_f[dst].unsqueeze(-1)
+            msg_f2u_2 = f_e[dst] * u_e[src] * norm_f[dst].unsqueeze(-1)
             agg_u = torch.zeros(num_users, D, device=device)\
                         .index_add(0, src, msg_f2u_1 + msg_f2u_2)
+            agg_u = agg_u * norm_u.unsqueeze(-1)
             new_u = F.leaky_relu(self.W1[l](u_e) + self.W2[l](agg_u))
             new_u = F.dropout(new_u, p=self.dropout, training=self.training)
 
             # User → Food messages (out-of-place)
-            msg_u2f_1 = u_e[src] * norm_e
-            msg_u2f_2 = u_e[src] * f_e[dst] * norm_e
+            msg_u2f_1 = u_e[src] * norm_u[src].unsqueeze(-1)
+            msg_u2f_2 = u_e[src] * f_e[dst] * norm_u[src].unsqueeze(-1)
             agg_f = torch.zeros(num_foods, D, device=device)\
                         .index_add(0, dst, msg_u2f_1 + msg_u2f_2)
+            agg_f = agg_f * norm_f.unsqueeze(-1)
             new_f = F.leaky_relu(self.W1[l](f_e) + self.W2[l](agg_f))
             new_f = F.dropout(new_f, p=self.dropout, training=self.training)
 
@@ -588,8 +589,8 @@ class SGL(nn.Module):
 
         self.u_emb = nn.Embedding(num_users, emb_dim)
         self.f_emb = nn.Embedding(num_foods, emb_dim)
-        nn.init.normal_(self.u_emb.weight, std=0.01)
-        nn.init.normal_(self.f_emb.weight, std=0.01)
+        nn.init.xavier_uniform_(self.u_emb.weight)
+        nn.init.xavier_uniform_(self.f_emb.weight)
 
     def _lightgcn_prop(self, train_ei, device, dropout_ratio=0.0):
         """LightGCN propagation with optional edge dropout for augmentation."""
@@ -607,19 +608,19 @@ class SGL(nn.Module):
             ones  = torch.ones(src.shape[0], device=device)
             deg_u.scatter_add_(0, src, ones)
             deg_f.scatter_add_(0, dst, ones)
-        norm = 1.0 / ((deg_u[src] * deg_f[dst]).clamp(min=1).sqrt())
-        norm_e = norm.unsqueeze(-1)  # [E, 1]
+            norm_u = (1.0 / deg_u.clamp(min=1).sqrt())  # [U]
+            norm_f = (1.0 / deg_f.clamp(min=1).sqrt())  # [F]
 
         u_e, f_e = self.u_emb.weight, self.f_emb.weight
         all_u, all_f = [u_e], [f_e]
         for _ in range(self.num_layers):
-            # out-of-place aggregation: preserves autograd graph
-            msg_u2f = u_e[src] * norm_e   # [E, D]
-            msg_f2u = f_e[dst] * norm_e   # [E, D]
+            # Per-node symmetric normalisation: avoids vanishing scale
+            msg_u2f = u_e[src] * norm_u[src].unsqueeze(-1)   # [E, D]
+            msg_f2u = f_e[dst] * norm_f[dst].unsqueeze(-1)   # [E, D]
             new_f = torch.zeros(self.num_foods, D, device=device)\
-                        .index_add(0, dst, msg_u2f)
+                        .index_add(0, dst, msg_u2f) * norm_f.unsqueeze(-1)
             new_u = torch.zeros(self.num_users, D, device=device)\
-                        .index_add(0, src, msg_f2u)
+                        .index_add(0, src, msg_f2u) * norm_u.unsqueeze(-1)
             u_e, f_e = new_u, new_f
             all_u.append(u_e)
             all_f.append(f_e)
@@ -1113,15 +1114,22 @@ class EarlyStopping:
 
 
 def _prepare_pairs(data, device):
-    """Return pos/neg edge pairs and full edge_label tensors."""
+    """Return pos/neg edge pairs (user-matched) and full edge_label tensors."""
     eil = data[('user','eats','food')].edge_label_index.to(device)
     el  = data[('user','eats','food')].edge_label.to(device)
     pos_m = el == 1
     neg_m = ~pos_m
-    pos_ei = eil[:, pos_m]
-    neg_ei = eil[:, neg_m]
+    pos_ei = eil[:, pos_m]   # [2, P]
+    neg_ei = eil[:, neg_m]   # [2, N]
     n = min(pos_ei.shape[1], neg_ei.shape[1])
-    return eil, el, pos_ei[:, :n], neg_ei[:, :n]
+
+    # Re-match: pair each pos user with a random neg food from neg pool
+    # This ensures BPR compares same user's pos vs neg item
+    pos_ei_n = pos_ei[:, :n]
+    neg_foods = neg_ei[1, torch.randperm(neg_ei.shape[1], device=device)[:n]]
+    neg_ei_matched = torch.stack([pos_ei_n[0], neg_foods], dim=0)
+
+    return eil, el, pos_ei_n, neg_ei_matched
 
 
 def train_one_epoch(model, optimizer, train_data, criterion, device,
