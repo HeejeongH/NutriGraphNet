@@ -444,25 +444,26 @@ class LightGCN(nn.Module):
         src, dst = train_ei[0], train_ei[1]
         D = self.u_emb.weight.shape[1]
 
-        deg_u = torch.zeros(self.num_users, device=device)
-        deg_f = torch.zeros(self.num_foods, device=device)
-        ones  = torch.ones(src.shape[0], device=device)
-        deg_u.scatter_add_(0, src, ones)
-        deg_f.scatter_add_(0, dst, ones)
+        # Degree normalisation (no-grad, degree is structural)
+        with torch.no_grad():
+            deg_u = torch.zeros(self.num_users, device=device)
+            deg_f = torch.zeros(self.num_foods, device=device)
+            ones  = torch.ones(src.shape[0], device=device)
+            deg_u.scatter_add_(0, src, ones)
+            deg_f.scatter_add_(0, dst, ones)
         norm = 1.0 / ((deg_u[src] * deg_f[dst]).sqrt() + 1e-8)  # [E]
-
-        # expand indices for 2-D scatter_add: [E] → [E, D]
-        dst_exp = dst.unsqueeze(-1).expand(-1, D)   # [E, D]
-        src_exp = src.unsqueeze(-1).expand(-1, D)   # [E, D]
-        norm_exp = norm.unsqueeze(-1)               # [E, 1]  broadcasts to [E, D]
+        norm_exp = norm.unsqueeze(-1)  # [E, 1]
 
         u_e, f_e = self.u_emb.weight, self.f_emb.weight
         all_u, all_f = [u_e], [f_e]
         for _ in range(self.num_layers):
-            new_f = torch.zeros_like(f_e)
-            new_f.scatter_add_(0, dst_exp, u_e[src] * norm_exp)
-            new_u = torch.zeros_like(u_e)
-            new_u.scatter_add_(0, src_exp, f_e[dst] * norm_exp)
+            # out-of-place aggregation: preserves autograd graph
+            msg_u2f = u_e[src] * norm_exp          # [E, D]
+            msg_f2u = f_e[dst] * norm_exp          # [E, D]
+            new_f = torch.zeros(self.num_foods, D, device=device)\
+                        .index_add(0, dst, msg_u2f)
+            new_u = torch.zeros(self.num_users, D, device=device)\
+                        .index_add(0, src, msg_f2u)
             u_e, f_e = new_u, new_f
             all_u.append(u_e); all_f.append(f_e)
 
@@ -514,11 +515,12 @@ class NGCF(nn.Module):
         num_users, num_foods = self.num_users, self.num_foods
 
         # Degree normalisation
-        deg_u = torch.zeros(num_users, device=device)
-        deg_f = torch.zeros(num_foods, device=device)
-        ones  = torch.ones(src.shape[0], device=device)
-        deg_u.scatter_add_(0, src, ones)
-        deg_f.scatter_add_(0, dst, ones)
+        with torch.no_grad():
+            deg_u = torch.zeros(num_users, device=device)
+            deg_f = torch.zeros(num_foods, device=device)
+            ones  = torch.ones(src.shape[0], device=device)
+            deg_u.scatter_add_(0, src, ones)
+            deg_f.scatter_add_(0, dst, ones)
         norm = 1.0 / ((deg_u[src] * deg_f[dst]).clamp(min=1).sqrt())  # [E]
 
         u_e = self.u_emb.weight  # [U, D]
@@ -530,19 +532,19 @@ class NGCF(nn.Module):
         norm_e = norm.unsqueeze(-1)
 
         for l in range(self.num_layers):
-            # Food → User messages
-            msg_f2u_1 = f_e[dst] * norm_e                     # neighbour term
-            msg_f2u_2 = f_e[dst] * u_e[src] * norm_e         # interaction term
-            agg_u = torch.zeros_like(u_e)
-            agg_u.scatter_add_(0, src_e, msg_f2u_1 + msg_f2u_2)
+            # Food → User messages (out-of-place to preserve autograd graph)
+            msg_f2u_1 = f_e[dst] * norm_e
+            msg_f2u_2 = f_e[dst] * u_e[src] * norm_e
+            agg_u = torch.zeros(num_users, D, device=device)\
+                        .index_add(0, src, msg_f2u_1 + msg_f2u_2)
             new_u = F.leaky_relu(self.W1[l](u_e) + self.W2[l](agg_u))
             new_u = F.dropout(new_u, p=self.dropout, training=self.training)
 
-            # User → Food messages
+            # User → Food messages (out-of-place)
             msg_u2f_1 = u_e[src] * norm_e
             msg_u2f_2 = u_e[src] * f_e[dst] * norm_e
-            agg_f = torch.zeros_like(f_e)
-            agg_f.scatter_add_(0, dst_e, msg_u2f_1 + msg_u2f_2)
+            agg_f = torch.zeros(num_foods, D, device=device)\
+                        .index_add(0, dst, msg_u2f_1 + msg_u2f_2)
             new_f = F.leaky_relu(self.W1[l](f_e) + self.W2[l](agg_f))
             new_f = F.dropout(new_f, p=self.dropout, training=self.training)
 
@@ -597,24 +599,27 @@ class SGL(nn.Module):
             src, dst = src[mask], dst[mask]
 
         D = self.u_emb.weight.shape[1]
-        deg_u = torch.zeros(self.num_users, device=device)
-        deg_f = torch.zeros(self.num_foods, device=device)
-        ones  = torch.ones(src.shape[0], device=device)
-        deg_u.scatter_add_(0, src, ones)
-        deg_f.scatter_add_(0, dst, ones)
-        norm = 1.0 / ((deg_u[src] * deg_f[dst]).clamp(min=1).sqrt())
 
-        src_e = src.unsqueeze(-1).expand(-1, D)
-        dst_e = dst.unsqueeze(-1).expand(-1, D)
-        norm_e = norm.unsqueeze(-1)
+        # Degree normalisation (no-grad, structural)
+        with torch.no_grad():
+            deg_u = torch.zeros(self.num_users, device=device)
+            deg_f = torch.zeros(self.num_foods, device=device)
+            ones  = torch.ones(src.shape[0], device=device)
+            deg_u.scatter_add_(0, src, ones)
+            deg_f.scatter_add_(0, dst, ones)
+        norm = 1.0 / ((deg_u[src] * deg_f[dst]).clamp(min=1).sqrt())
+        norm_e = norm.unsqueeze(-1)  # [E, 1]
 
         u_e, f_e = self.u_emb.weight, self.f_emb.weight
         all_u, all_f = [u_e], [f_e]
         for _ in range(self.num_layers):
-            new_f = torch.zeros_like(f_e)
-            new_f.scatter_add_(0, dst_e, u_e[src] * norm_e)
-            new_u = torch.zeros_like(u_e)
-            new_u.scatter_add_(0, src_e, f_e[dst] * norm_e)
+            # out-of-place aggregation: preserves autograd graph
+            msg_u2f = u_e[src] * norm_e   # [E, D]
+            msg_f2u = f_e[dst] * norm_e   # [E, D]
+            new_f = torch.zeros(self.num_foods, D, device=device)\
+                        .index_add(0, dst, msg_u2f)
+            new_u = torch.zeros(self.num_users, D, device=device)\
+                        .index_add(0, src, msg_f2u)
             u_e, f_e = new_u, new_f
             all_u.append(u_e)
             all_f.append(f_e)
