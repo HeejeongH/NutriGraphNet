@@ -7,27 +7,28 @@
 \setlength{\tabcolsep}{4pt}
 \caption{%
   Performance comparison on the Allrecipes dataset
-  (5-fold cross-validation, Sampled-100 evaluation protocol).
+  (20,820 users / 31,458 foods / 262,270 interactions,
+  5-fold cross-validation).
   \textbf{Bold}: best result per column.
   \underline{Underline}: second-best.
-  $^*$/$^{**}$: Wilcoxon signed-rank test, one-tailed
-  ($p{<}0.05$ / $p{<}0.01$) vs.\ \textbf{NutriGraphNet v2}.
+  $^*$: Wilcoxon signed-rank test, one-tailed ($p{<}0.05$)
+  vs.\ \textbf{NutriGraphNet v2}.
   $\lambda_\text{health}=0.01$.}
 \label{tab:main_allrecipes}
 \resizebox{\textwidth}{!}{%
 \begin{tabular}{lrrrrrrrrrr}
 \toprule
-\multicolumn{1}{c}{} & \multicolumn{2}{c}{\textit{Classification}} & \multicolumn{7}{c}{\textit{Ranking (Sampled-100)}} & \multicolumn{1}{c}{\textit{Health}} \\
+\multicolumn{1}{c}{} & \multicolumn{2}{c}{\textit{Classification}} & \multicolumn{7}{c}{\textit{Ranking}} & \multicolumn{1}{c}{\textit{Health}} \\
 \cmidrule(lr){2-3}\cmidrule(lr){4-10}\cmidrule(lr){11-11}
 \textbf{Model} & \textbf{AUC} & \textbf{F1} & \textbf{HR@5} & \textbf{HR@10} & \textbf{HR@20} & \textbf{NDCG@5} & \textbf{NDCG@10} & \textbf{NDCG@20} & \textbf{MRR} & \textbf{HGain@10} \\
 \midrule
-MF~\cite{koren2009matrix} & 0.7655\tiny{$\pm$0.0090}$^{*}$ & 0.7109\tiny{$\pm$0.0060}$^{*}$ & 0.0340\tiny{$\pm$0.0050} & 0.0520\tiny{$\pm$0.0070}$^{*}$ & 0.0890\tiny{$\pm$0.0100} & 0.0095\tiny{$\pm$0.0020} & 0.0142\tiny{$\pm$0.0030}$^{*}$ & 0.0218\tiny{$\pm$0.0040} & 0.0000\tiny{$\pm$0.0000} & -- \\
-LightGCN~\cite{he2020lightgcn} & \underline{0.8711\tiny{$\pm$0.0010}} & 0.6531\tiny{$\pm$0.0010}$^{*}$ & 0.1820\tiny{$\pm$0.0100} & 0.2490\tiny{$\pm$0.0170} & 0.3350\tiny{$\pm$0.0200} & 0.0785\tiny{$\pm$0.0050} & 0.1068\tiny{$\pm$0.0070} & 0.1312\tiny{$\pm$0.0080} & 0.0000\tiny{$\pm$0.0000} & -- \\
+MF~\cite{koren2009matrix} & 0.8125\tiny{$\pm$0.0037}$^{*}$ & 0.7448\tiny{$\pm$0.0047}$^{*}$ & 0.6640\tiny{$\pm$0.0265} & 0.7550\tiny{$\pm$0.0255} & 0.8230\tiny{$\pm$0.0294} & 0.5233\tiny{$\pm$0.0194} & 0.5530\tiny{$\pm$0.0154} & 0.5705\tiny{$\pm$0.0156} & 0.4968\tiny{$\pm$0.0147} & -- \\
+LightGCN~\cite{he2020lightgcn} & \underline{0.8914\tiny{$\pm$0.0013}} & \textbf{0.8431\tiny{$\pm$0.0016}} & \textbf{0.7330\tiny{$\pm$0.0264}} & \textbf{0.8020\tiny{$\pm$0.0284}} & \textbf{0.8650\tiny{$\pm$0.0270}} & \textbf{0.5915\tiny{$\pm$0.0241}} & \textbf{0.6140\tiny{$\pm$0.0252}} & \textbf{0.6300\tiny{$\pm$0.0251}} & \textbf{0.5604\tiny{$\pm$0.0272}} & -- \\
+NGCF~\cite{wang2019neural} & \textbf{0.8921\tiny{$\pm$0.0026}} & \underline{0.8394\tiny{$\pm$0.0030}} & \underline{0.7270\tiny{$\pm$0.0284}} & \underline{0.8000\tiny{$\pm$0.0263}} & \underline{0.8620\tiny{$\pm$0.0304}} & \underline{0.5724\tiny{$\pm$0.0289}} & \underline{0.5960\tiny{$\pm$0.0305}} & \underline{0.6119\tiny{$\pm$0.0297}} & \underline{0.5372\tiny{$\pm$0.0327}} & -- \\
+SGL~\cite{wu2021self} & 0.7953\tiny{$\pm$0.0019}$^{*}$ & 0.7008\tiny{$\pm$0.0010}$^{*}$ & 0.4900\tiny{$\pm$0.0409} & 0.6040\tiny{$\pm$0.0361} & 0.6900\tiny{$\pm$0.0341}$^{*}$ & 0.3639\tiny{$\pm$0.0260} & 0.4009\tiny{$\pm$0.0258} & 0.4227\tiny{$\pm$0.0253} & 0.3505\tiny{$\pm$0.0219} & -- \\
+HFRSDA~\cite{yang2022hfrsda} & 0.8827\tiny{$\pm$0.0017} & 0.8251\tiny{$\pm$0.0030} & 0.3740\tiny{$\pm$0.0532} & 0.4760\tiny{$\pm$0.0483}$^{*}$ & 0.6130\tiny{$\pm$0.0461}$^{*}$ & 0.2950\tiny{$\pm$0.0314} & 0.3281\tiny{$\pm$0.0294} & 0.3625\tiny{$\pm$0.0274} & 0.3012\tiny{$\pm$0.0224} & -- \\
 \midrule
-NGN$_{\text{-D}}$ (w/o dual-ch.) & 0.8456\tiny{$\pm$0.0050} & 0.7485\tiny{$\pm$0.0560} & 0.5100\tiny{$\pm$0.0400} & 0.6570\tiny{$\pm$0.0330} & 0.7820\tiny{$\pm$0.0250} & 0.2650\tiny{$\pm$0.0400} & 0.3400\tiny{$\pm$0.0480} & 0.4010\tiny{$\pm$0.0450} & 0.2579\tiny{$\pm$0.0610} & -0.0521\tiny{$\pm$0.0150} \\
-NGN$_{\text{-H}}$ (w/o health) & 0.8636\tiny{$\pm$0.0050} & \underline{0.7861\tiny{$\pm$0.0150}} & \textbf{0.6010\tiny{$\pm$0.0300}} & \textbf{0.7300\tiny{$\pm$0.0270}} & \textbf{0.8190\tiny{$\pm$0.0200}} & \underline{0.3520\tiny{$\pm$0.0500}} & \underline{0.4301\tiny{$\pm$0.0560}} & \underline{0.4890\tiny{$\pm$0.0480}} & \underline{0.3470\tiny{$\pm$0.0670}} & -0.0318\tiny{$\pm$0.0120} \\
-NGN$_{\text{-CL}}$ (w/o CL) & \textbf{0.8728\tiny{$\pm$0.0150}} & \textbf{0.8172\tiny{$\pm$0.0090}} & \underline{0.5900\tiny{$\pm$0.0500}} & 0.7230\tiny{$\pm$0.0480} & 0.8120\tiny{$\pm$0.0350} & \textbf{0.3610\tiny{$\pm$0.0800}} & \textbf{0.4477\tiny{$\pm$0.0930}} & \textbf{0.5050\tiny{$\pm$0.0800}} & \textbf{0.3736\tiny{$\pm$0.1020}} & \underline{-0.0290\tiny{$\pm$0.0180}} \\
-\textbf{NutriGraphNet v2} (ours) & 0.8582\tiny{$\pm$0.0080} & 0.7821\tiny{$\pm$0.0230} & 0.5880\tiny{$\pm$0.0200} & \underline{0.7240\tiny{$\pm$0.0200}} & \underline{0.8180\tiny{$\pm$0.0150}} & 0.3320\tiny{$\pm$0.0150} & 0.4162\tiny{$\pm$0.0130} & 0.4810\tiny{$\pm$0.0120} & 0.3312\tiny{$\pm$0.0190} & \textbf{-0.0089\tiny{$\pm$0.0080}} \\
+\textbf{NutriGraphNet v2} (ours) & 0.8521\tiny{$\pm$0.0117} & 0.7811\tiny{$\pm$0.0184} & 0.4930\tiny{$\pm$0.1376} & 0.7020\tiny{$\pm$0.0760} & 0.8230\tiny{$\pm$0.0294} & 0.3138\tiny{$\pm$0.1048} & 0.3820\tiny{$\pm$0.0825} & 0.4127\tiny{$\pm$0.0659} & 0.2956\tiny{$\pm$0.0827} & \textbf{-0.0090\tiny{$\pm$0.0033}} \\
 \bottomrule
 \end{tabular}}
 \end{table*}
