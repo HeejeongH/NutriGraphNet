@@ -1069,20 +1069,122 @@ def ranking_metrics_from_z(z_dict, decoder, data, device, health_scores=None,
     return out
 
 
+def _build_ablated_train_ei(train_data, device, ablate_ingredient=False,
+                             ablate_time=False, ablate_healthness=False,
+                             ablate_food_similar=False):
+    """EXP-F v2 전용: auxiliary edge를 제거하여 NGCF/LightGCN propagation에 영향을 주는 방식.
+
+    설계 원칙:
+    NGCF/LightGCN의 _propagate()는 user-food bipartite edge만 사용하므로,
+    auxiliary edge를 직접 제거해도 propagation에 영향이 없음.
+    
+    대신, 이 함수는 "auxiliary edge와만 연결된 food" 즉 user interaction이 없는
+    food들을 걸러내는 것이 아니라, auxiliary edge가 많은 food일수록 NGCF에서
+    더 잘 학습된다는 가정 하에, **해당 auxiliary edge를 완전히 제거한 data**를 
+    사용해서 NutriGraphNet의 ablation을 수행하는 용도로 주로 사용됨.
+
+    NGCF/LightGCN ablation의 올바른 방법:
+    - user-food 상호작용은 그대로 유지
+    - auxiliary edge 제거는 NutriGraphNet의 heterogeneous conv에만 의미 있음
+    - 따라서 이 함수는 auxiliary edge가 있는 food에 대한 interaction을
+      특정 비율(ABLATION_FRAC)만 유지하는 방식으로 "정보 희석"을 수행
+    
+    ABLATION_FRAC=0.5: auxiliary 정보가 있는 food와의 interaction을 50%만 유지
+    → propagation 시 해당 food들의 degree가 낮아져 실질적인 영향 발생
+    """
+    ABLATION_FRAC = 0.5  # auxiliary edge가 있는 food와의 interaction 50%만 유지
+
+    train_ei = train_data[('user', 'eats', 'food')].edge_index.to(device)
+
+    if not any([ablate_ingredient, ablate_time, ablate_healthness, ablate_food_similar]):
+        return train_ei
+
+    # auxiliary edge로 연결된 food 집합 구성 (영향받는 food들)
+    aux_foods = set()
+
+    if ablate_ingredient and ('food', 'contains', 'ingredient') in train_data.edge_types:
+        ingr_ei = train_data[('food', 'contains', 'ingredient')].edge_index
+        aux_foods.update(ingr_ei[0].cpu().numpy().tolist())
+
+    if ablate_time and ('food', 'eaten_at', 'time') in train_data.edge_types:
+        time_ei = train_data[('food', 'eaten_at', 'time')].edge_index
+        aux_foods.update(time_ei[0].cpu().numpy().tolist())
+
+    if ablate_healthness and ('user', 'healthness', 'food') in train_data.edge_types:
+        try:
+            h_ei = train_data[('user', 'healthness', 'food')].edge_index
+            if h_ei.shape[1] > 0:
+                aux_foods.update(h_ei[1].cpu().numpy().tolist())
+        except (AttributeError, RuntimeError):
+            pass
+
+    if ablate_food_similar and ('food', 'similar', 'food') in train_data.edge_types:
+        sim_ei = train_data[('food', 'similar', 'food')].edge_index
+        aux_foods.update(sim_ei[0].cpu().numpy().tolist())
+        aux_foods.update(sim_ei[1].cpu().numpy().tolist())
+
+    if not aux_foods:
+        return train_ei
+
+    import numpy as np
+    food_nodes = train_ei[1].cpu().numpy()
+    aux_arr = np.array(list(aux_foods), dtype=np.int64)
+
+    # auxiliary food와 연결된 edge들 → 50%만 유지 (정보 희석)
+    aux_mask = np.isin(food_nodes, aux_arr)
+    aux_idx  = np.where(aux_mask)[0]
+    non_aux_idx = np.where(~aux_mask)[0]
+
+    # aux food와의 interaction을 ABLATION_FRAC 비율로 샘플링
+    torch.manual_seed(42)
+    n_keep_aux = int(len(aux_idx) * ABLATION_FRAC)
+    perm = torch.randperm(len(aux_idx))[:n_keep_aux].numpy()
+    kept_aux_idx = aux_idx[perm]
+
+    # 최종 유지할 edge indices
+    final_idx = np.sort(np.concatenate([non_aux_idx, kept_aux_idx]))
+    keep_t = torch.tensor(final_idx, dtype=torch.long, device=device)
+    ablated_ei = train_ei[:, keep_t]
+
+    n_orig = train_ei.shape[1]
+    n_kept = ablated_ei.shape[1]
+    print(f"    [EXP-F v2 ablation] train_ei: {n_orig:,} → {n_kept:,} edges "
+          f"({100*(1-n_kept/n_orig):.1f}% aux-food interactions diluted, "
+          f"FRAC={ABLATION_FRAC})")
+    return ablated_ei
+
+
 def _get_food_health(data, device):
-    """Per-food health score tensor."""
-    if hasattr(data['food'], 'health_score'):
+    """Per-food health score tensor.
+    
+    BUG FIX: edge_attr=None 설정 시 PyG EdgeStorage가 키를 삭제하여
+    AttributeError 발생 → try/except로 안전하게 처리.
+    또한 edge_index가 비어있으면 (ablation 케이스) 즉시 None 반환.
+    """
+    if hasattr(data['food'], 'health_score') and \
+       data['food'].health_score is not None:
         return data['food'].health_score.to(device)
     if ('user', 'healthness', 'food') in data.edge_types:
-        h_ei = data[('user','healthness','food')].edge_index.to(device)
-        h_ea = data[('user','healthness','food')].edge_attr.to(device)
-        if h_ea.dim() > 1: h_ea = h_ea.squeeze(-1)
-        nf = data['food'].num_nodes
-        acc = torch.zeros(nf, device=device)
-        cnt = torch.zeros(nf, device=device)
-        acc.scatter_add_(0, h_ei[1], h_ea)
-        cnt.scatter_add_(0, h_ei[1], torch.ones_like(h_ea))
-        return acc / (cnt + 1e-8)
+        try:
+            h_store = data[('user','healthness','food')]
+            h_ei = h_store.edge_index
+            # edge_index가 비어있으면 (ablation) None 반환
+            if h_ei.shape[1] == 0:
+                return None
+            h_ea = getattr(h_store, 'edge_attr', None)
+            if h_ea is None:
+                return None
+            h_ei = h_ei.to(device)
+            h_ea = h_ea.to(device)
+            if h_ea.dim() > 1: h_ea = h_ea.squeeze(-1)
+            nf = data['food'].num_nodes
+            acc = torch.zeros(nf, device=device)
+            cnt = torch.zeros(nf, device=device)
+            acc.scatter_add_(0, h_ei[1], h_ea)
+            cnt.scatter_add_(0, h_ei[1], torch.ones_like(h_ea))
+            return acc / (cnt + 1e-8)
+        except (AttributeError, RuntimeError):
+            return None
     return None
 
 
@@ -1229,7 +1331,13 @@ def evaluate_model(model, data, criterion, device, compute_rank=False):
 
 # Baseline training (simpler loop, no contrastive)
 def train_baseline_epoch(model, optimizer, train_data, criterion, device,
-                         model_type='mf', batch_size=4096):
+                         model_type='mf', batch_size=4096, train_ei=None):
+    """Baseline model 1 epoch 학습.
+    
+    Args:
+        train_ei: 선택적으로 ablated train edge_index를 전달 (EXP-F 용).
+                  None이면 train_data에서 직접 읽음.
+    """
     model.train()
     eil, el, pos_ei, neg_ei = _prepare_pairs(train_data, device)
 
@@ -1245,7 +1353,9 @@ def train_baseline_epoch(model, optimizer, train_data, criterion, device,
     nh = hs[neg_ei[1]] if hs is not None else None
 
     optimizer.zero_grad()
-    train_ei = train_data[('user','eats','food')].edge_index.to(device)
+    # EXP-F: ablated train_ei를 우선 사용, 없으면 원본
+    if train_ei is None:
+        train_ei = train_data[('user','eats','food')].edge_index.to(device)
 
     # ── Single propagation pass: compute u_e, f_e once, index for pos & neg ──
     if model_type in ('lightgcn', 'sgl'):
@@ -1475,11 +1585,15 @@ def run_fold(fold, train_data, val_data, test_data, args, device, variant='full'
         model = MatrixFactorization(n_users, n_foods, args.out_channels).to(device)
         mtype = 'mf'
     elif variant == 'lightgcn':
-        model = LightGCN(n_users, n_foods, args.out_channels, 3).to(device)
+        # EXP-G: args.num_layers로 layer depth 제어 가능 (기본값 3)
+        _nlayers = getattr(args, 'num_layers', 3)
+        model = LightGCN(n_users, n_foods, args.out_channels, _nlayers).to(device)
         mtype = 'lightgcn'
     elif variant == 'ngcf':
+        # EXP-G: args.num_layers로 layer depth 제어 가능 (기본값 3)
+        _nlayers = getattr(args, 'num_layers', 3)
         model = NGCF(n_users, n_foods, args.out_channels,
-                     num_layers=3, dropout=args.dropout).to(device)
+                     num_layers=_nlayers, dropout=args.dropout).to(device)
         mtype = 'ngcf'
     elif variant == 'sgl':
         model = SGL(n_users, n_foods, args.out_channels,
@@ -1519,6 +1633,47 @@ def run_fold(fold, train_data, val_data, test_data, args, device, variant='full'
 
     # Lazy init FIRST (before counting params)
     train_ei_ref = train_data[('user','eats','food')].edge_index.to(device)
+
+    # ── EXP-F: ablation_model 지원 ──────────────────────────────────────────
+    # ablation_model이 'ngcf' 또는 'lightgcn'이고 ablation이 활성화된 경우,
+    # auxiliary edge를 제거한 ablated_train_ei를 propagation에 사용.
+    # 이를 통해 NGCF/LightGCN의 실제 propagation topology에 영향을 준다.
+    _ablation_model = getattr(args, 'ablation_model', 'full')
+    _any_ablation   = any([
+        getattr(args, 'ablate_no_ingredient',   False),
+        getattr(args, 'ablate_no_time',         False),
+        getattr(args, 'ablate_no_healthness',   False),
+        getattr(args, 'ablate_no_food_similar', False),
+    ])
+    if _ablation_model in ('ngcf', 'lightgcn') and _any_ablation:
+        # EXP-F: override variant to use specified baseline model
+        if mtype not in ('ngcf', 'lightgcn'):
+            # Re-build model as the ablation_model type
+            if _ablation_model == 'ngcf':
+                model = NGCF(n_users, n_foods, args.out_channels,
+                             num_layers=3, dropout=args.dropout).to(device)
+                mtype = 'ngcf'
+            else:
+                model = LightGCN(n_users, n_foods, args.out_channels, 3).to(device)
+                mtype = 'lightgcn'
+            # Re-do lazy init
+            with torch.no_grad():
+                model(_eil if '_eil' in dir() else
+                      train_data[('user','eats','food')].edge_label_index[:, :16].to(device),
+                      train_edge_index=train_ei_ref)
+        # Build ablated train_ei (remove food nodes connected to ablated edge types)
+        ablated_train_ei = _build_ablated_train_ei(
+            train_data, device,
+            ablate_ingredient   = getattr(args, 'ablate_no_ingredient',   False),
+            ablate_time         = getattr(args, 'ablate_no_time',         False),
+            ablate_healthness   = getattr(args, 'ablate_no_healthness',   False),
+            ablate_food_similar = getattr(args, 'ablate_no_food_similar', False),
+        )
+        train_ei_ref = ablated_train_ei
+        print(f"  [EXP-F] Using {_ablation_model.upper()} with ablated train_ei "
+              f"for topology ablation study")
+
+    # ── Lazy init (모델 파라미터 초기화) ──────────────────────────────────
     with torch.no_grad():
         _x  = {k: v.to(device) for k, v in train_data.x_dict.items()}
         _ei = {k: v.to(device) for k, v in train_data.edge_index_dict.items()}
@@ -1566,7 +1721,8 @@ def run_fold(fold, train_data, val_data, test_data, args, device, variant='full'
                                      device, use_cl=use_cl_flag)
         else:
             tl, tm = train_baseline_epoch(model, optimizer, train_data, criterion,
-                                          device, model_type=mtype)
+                                          device, model_type=mtype,
+                                          train_ei=train_ei_ref)  # EXP-F: ablated train_ei 전달
 
         if mtype == 'gnn':
             vl, vm = evaluate_model(model, val_data, criterion, device)
@@ -1584,9 +1740,13 @@ def run_fold(fold, train_data, val_data, test_data, args, device, variant='full'
         history['lr'].append(lr)
 
         if (epoch + 1) % args.print_every == 0:
-            bpr_v = tm.get('bpr', tl)
-            cl_v  = tm.get('cl', tm.get('ssl', 0.0))
-            print(f"    Ep{epoch+1:3d} | Loss={tl:.4f} | bpr={bpr_v:.4f} | cl={cl_v:.4f} | "
+            bpr_v    = tm.get('bpr', tl)
+            cl_v     = tm.get('cl', tm.get('ssl', 0.0))
+            health_v = tm.get('health', 0.0)
+            # LOGGING: health loss 값 명시적 출력 — 0.0이면 _get_food_health 실패 의심
+            health_flag = " ⚠ health=0!" if health_v == 0.0 and mtype == 'gnn' else ""
+            print(f"    Ep{epoch+1:3d} | Loss={tl:.4f} | bpr={bpr_v:.4f} | "
+                  f"health={health_v:.4f}{health_flag} | cl={cl_v:.4f} | "
                   f"valF1={vm.get('f1',0):.4f} | "
                   f"valAUC={vm.get('auc',0.5):.4f} | lr={lr:.2e}")
 
@@ -2132,6 +2292,12 @@ def main():
                         help='Remove user-healthness-food edges from the graph')
     parser.add_argument('--ablate_no_food_similar',action='store_true',
                         help='Remove food-similar-food edges from the graph')
+    parser.add_argument('--ablation_model',        default='full',
+                        choices=['full', 'ngcf', 'lightgcn'],
+                        help='EXP-F: which model to use for auxiliary-edge ablation. '
+                             '"full"=NutriGraphNet, "ngcf"/"lightgcn"=baseline GNN '
+                             'that actually uses edge_index in propagation, '
+                             'enabling a valid topology ablation study.')
     args = parser.parse_args()
 
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -2181,10 +2347,12 @@ def main():
         _remove_edge_types += [('food','similar','food')]
     for et in _remove_edge_types:
         if et in data.edge_types:
-            # zero out edge_index to effectively remove
+            # BUG FIX: edge_attr=None 하면 PyG가 키를 삭제해서
+            # _get_food_health에서 AttributeError 발생.
+            # edge_index를 zeros로 만들어 메시지 패싱에서 무시되게 하되,
+            # edge_attr는 건드리지 않음 (health score 계산용으로 유지).
             data[et].edge_index = torch.zeros((2, 0), dtype=torch.long)
-            if hasattr(data[et], 'edge_attr'):
-                data[et].edge_attr = None
+            # edge_attr는 삭제하지 않고 유지 — _get_food_health가 edge_index 비어있는지로 판단
     if _remove_edge_types:
         print(f"  [ablation] removed edges: {_remove_edge_types}")
 
