@@ -22,6 +22,10 @@ env/
 #*.pickle
 checkpoints/
 results/
+!results/analysis/
+!results/analysis/**
+results/**/*.pt
+results/**/*.pth
 logs/
 *.log
 
