@@ -20,7 +20,7 @@ import matplotlib.patches as mpatches
 from matplotlib.gridspec import GridSpec
 
 # ── paths ─────────────────────────────────────────────────────────────────────
-SRC  = "/home/user/uploaded_files/SUMMARY.json.txt"
+SRC  = "/home/user/webapp/results/analysis/SUMMARY_v3.json"
 OUT  = "/home/user/webapp/nutrigraphnet_results/figures"
 os.makedirs(OUT, exist_ok=True)
 

@@ -96,8 +96,8 @@
 <h1>NutriGraphNet — Analysis Results Dashboard</h1>
 <p class="subtitle">
   <span class="badge badge-blue">Option C Paper</span>
-  <span class="badge badge-green">v0.2</span>
-  <span class="badge badge-orange">2026-06-28</span>
+  <span class="badge badge-green">v0.4</span>
+  <span class="badge badge-orange">2026-07-11</span>
   "Why Graph Augmentation Fails in Sparse Nutrition Graphs" · 5-Fold CV Results
 </p>
 
@@ -116,12 +116,12 @@
   <div class="section">
     <div class="section-title">Main Results — dim=64, Full Dataset</div>
     <div class="stat-grid">
-      <div class="stat-card"><div class="stat-label">Best HR@10</div><div class="stat-value">0.781</div><div class="stat-sub">NGCF (d=64)</div></div>
-      <div class="stat-card"><div class="stat-label">Best NDCG@10</div><div class="stat-value">0.603</div><div class="stat-sub">HFRS-DA (d=64)</div></div>
-      <div class="stat-card"><div class="stat-label">Best AUC</div><div class="stat-value">0.877</div><div class="stat-sub">NGCF (d=64)</div></div>
-      <div class="stat-card"><div class="stat-label">SGL HR@10</div><div class="stat-value" style="color:#E15759">0.347</div><div class="stat-sub">vs MF 0.730 (−53%)</div></div>
-      <div class="stat-card"><div class="stat-label">MF HR@10</div><div class="stat-value" style="color:#F28E2B">0.730</div><div class="stat-sub">Best ranking despite lowest AUC</div></div>
-      <div class="stat-card"><div class="stat-label">λ Sensitivity</div><div class="stat-value" style="color:#76B7B2">~0</div><div class="stat-sub">Δ AUC &lt; 1.25e-7</div></div>
+      <div class="stat-card"><div class="stat-label">Best HR@10</div><div class="stat-value">0.787</div><div class="stat-sub">NGCF (d=256)</div></div>
+      <div class="stat-card"><div class="stat-label">Best NDCG@10</div><div class="stat-value">0.598</div><div class="stat-sub">HFRS-DA (d=64)</div></div>
+      <div class="stat-card"><div class="stat-label">Best AUC</div><div class="stat-value">0.881</div><div class="stat-sub">NGCF (d=256)</div></div>
+      <div class="stat-card"><div class="stat-label">SGL Collapse</div><div class="stat-value" style="color:#E15759">0.092</div><div class="stat-sub">at 10% density · 3.74× below MF</div></div>
+      <div class="stat-card"><div class="stat-label">MF HR@10</div><div class="stat-value" style="color:#F28E2B">0.757</div><div class="stat-sub">100% density · best ranking vs SGL</div></div>
+      <div class="stat-card"><div class="stat-label">λ Sensitivity</div><div class="stat-value" style="color:#76B7B2">0.000</div><div class="stat-sub">Δ HR@10 exactly zero (4 orders of mag)</div></div>
     </div>
 
     <div class="table-wrap">
@@ -163,26 +163,28 @@
       <div class="finding-card alert">
         <div class="finding-title">🔴 C1 · SGL Augmentation Collapse</div>
         <div class="finding-body">
-          SGL achieves HR@10=<strong>0.347</strong> vs. MF=0.730 (−53%) at full density.<br>
-          At 10% density: SGL=<strong>0.092</strong> vs. MF=0.344 (−73%).<br>
-          Graph density (0.040%) is 10× sparser than MovieLens-1M.<br>
-          Edge dropout removes ~1.26 interactions/user at 10% data → contrastive collapse.
+          SGL HR@10=<strong>0.354</strong> at 100% density vs. MF=0.757 (−53%).<br>
+          At 10% density: SGL=<strong>0.092</strong> vs. LightGCN=0.513 (5.58× gap).<br>
+          Best aug ratio is always p=0.0 (no augmentation) — all p&gt;0 degrade performance.<br>
+          EXP-A: HR@10 step diffs: −0.0028, −0.0012, +0.0036, −0.0024, −0.0056.
         </div>
       </div>
       <div class="finding-card insight">
-        <div class="finding-title">🟡 C2 · MF Ranking Paradox</div>
+        <div class="finding-title">🟡 C2 · MF-SGL Ranking Paradox</div>
         <div class="finding-body">
-          MF (AUC=0.509) beats all GNNs on HR@10/NDCG@10/MRR despite lowest AUC.<br>
-          Graph ablation: removing all auxiliary edge types → <strong>zero performance change</strong>.<br>
-          GNN over-smoothing + inutile heterogeneous edges explain the paradox.
+          MF AUC=0.547 (structural ceiling) vs. NGCF AUC=0.879 — yet HR@10 gap is only +2.64%.<br>
+          LightGCN best at 10–30% density; NGCF best at 50–100%.<br>
+          EXP-F: HFRS-DA topology invariant — all 5 edge ablations give <strong>Δ HR@10 = 0.000 exactly</strong>.<br>
+          HFRS-DA optimal d=32 (AUC=0.862); collapses at d=256 (AUC=0.574, −27p).
         </div>
       </div>
       <div class="finding-card neutral">
-        <div class="finding-title">🔵 C3 · Health Constraint Ineffective</div>
+        <div class="finding-title">🔵 C3 · Health Constraint Architectural Failure</div>
         <div class="finding-body">
-          λ_health sweep 0.001→1.0: HR@10=<strong>0.7340</strong> for all values (Δ=0.000).<br>
-          AUC variance &lt; 1.25×10⁻⁷ across four orders of magnitude.<br>
-          Health loss gradient vanishes — no actual health alignment in practice.
+          λ_health sweep 0.001→1.0: HR@10=<strong>0.7340</strong> for all 8 values (Δ=0.0000 exactly).<br>
+          Δ AUC &lt; 1.25×10⁻⁷ across four orders of magnitude.<br>
+          Root cause: NutriLoss health gradient backprop path architecturally severed in HFRS-DA.<br>
+          Compound failure: HFRS-DA topology invariant (EXP-F) + health gradient vanishes (EXP-C).
         </div>
       </div>
     </div>
@@ -262,12 +264,12 @@
     </table>
   </div>
   <div class="finding-card neutral" style="margin-top:1rem">
-    <div class="finding-title">Interpretation</div>
+    <div class="finding-title">Root-Cause Analysis (v0.4)</div>
     <div class="finding-body">
-      Three possible explanations for zero sensitivity: (1) healthness edge features are linearly separable — model achieves ~zero health loss trivially regardless of λ; 
-      (2) health loss is not properly normalized relative to BPR loss — overwhelmed at any λ; 
-      (3) attention heads collapse to degenerate fixed-point. 
-      <strong>Practical implication:</strong> HFRS-DA provides no actual health alignment guarantee in this dataset.
+      <strong>Two compounding failure modes identified:</strong><br>
+      (1) <strong>Architectural backprop severance:</strong> HFRS-DA NLA branch computes scores via direct embedding lookup + interaction-matrix attention only. Neither NLA nor SLA branch routes messages through healthness edges. The NutriLoss health gradient reaches the embedding table but has no path to attention weights governing health sensitivity.<br>
+      (2) <strong>Score distribution mismatch:</strong> NutriLoss health_margin was designed for NutriGraphNet's BPR score distribution; HFRS-DA's internal scoring produces a different activation distribution, leaving effective health gradient magnitude near zero.<br>
+      <strong>Practical implication:</strong> HFRS-DA provides NO statistical health-alignment guarantee. For clinical deployment, explicit health gradient routing via dedicated convolution along healthness edges is required.
     </div>
   </div>
 </div>
@@ -276,9 +278,10 @@
 <div id="tab-expD" class="tab-content">
   <div class="highlight-box">
     <div class="hl-title">EXP-D · Embedding Dimension Sweep (d = 16 → 256, all models)</div>
-    MF monotonically improves (0.685→0.753). GNNs plateau at d=64–128. 
-    SGL partially recovers at high d (0.270→0.421) but remains far below MF/NGCF.
-    HFRS-DA degrades at d=256 (over-fitting with health attention).
+    MF monotonically improves (0.685→0.753); no saturation. NGCF peaks at d=64 (99.2% of d=256 performance).
+    LightGCN non-monotone (peaks d=32, dips at d=64, recovers at d=256).
+    SGL partial recovery at d=256 (0.270→0.421) but remains 44% below MF.
+    <strong>HFRS-DA critical anomaly at d=256: AUC collapses 0.862→0.574 (−27p), HR@10 drops 0.755→0.718.</strong>
   </div>
   <div class="chart-container">
     <div class="chart-title">HR@10 vs. Embedding Dimension d</div>
@@ -304,11 +307,13 @@
 <!-- ══════════════════════════════════════════════════════════ TAB EXP-F -->
 <div id="tab-expF" class="tab-content">
   <div class="highlight-box">
-    <div class="hl-title">EXP-F · Graph Component Ablation (HFRS-DA)</div>
+    <div class="hl-title">EXP-F · Graph Component Ablation (HFRS-DA) — Topology Invariance</div>
     <span class="badge badge-red">Critical Finding</span>
-    Removing ANY edge type (ingredient, time, food-similar, or all combinations) produces 
-    <strong>zero change</strong> in HR@10, NDCG@10, or AUC. 
-    All heterogeneous edges are informationally inert in this model/dataset combination.
+    Removing ANY edge type (ingredient, time, food-similar, or combination) produces
+    <strong>Δ HR@10 = 0.000 exactly</strong> (confirmed &lt;1×10⁻¹⁰ across all 5 folds).
+    <strong>Root cause:</strong> HFRSDAModel.forward() NLA branch uses only interaction-matrix embeddings;
+    SLA branch applies linear(food_emb) only. Neither routes messages through auxiliary edge types.
+    HFRS-DA is a <em>topology-invariant embedding model</em> despite its heterogeneous graph framing.
   </div>
   <div class="chart-container">
     <div class="chart-title">HFRS-DA: Performance by Graph Variant</div>
@@ -321,12 +326,17 @@
     </table>
   </div>
   <div class="finding-card alert" style="margin-top:1rem">
-    <div class="finding-title">What This Means</div>
+    <div class="finding-title">Topology Invariance: Architecture Analysis</div>
     <div class="finding-body">
-      This finding directly explains the <strong>MF Ranking Paradox</strong>: since auxiliary edge types provide zero information, 
-      GNN message-passing over them adds noise. MF, using only user-food interactions, avoids this noise entirely. 
-      This also implies that the NutriGraph-KR graph's value comes entirely from user-food co-occurrence patterns, 
-      not from compositional (ingredient) or temporal signals in the current model architecture.
+      <strong>HFRS-DA is mathematically topology-invariant:</strong> confirmed via 3 independent verification checks:<br>
+      (1) Health scores non-zero for all 31,458 foods (mean=0.6653) — data is present<br>
+      (2) Ablation code correctly zeros edge_index (not edge_attr) — ablation is correctly applied<br>
+      (3) Re-running after 3 bug fixes produces identical results — finding is reproducible<br>
+      <br>
+      <strong>Implication:</strong> HFRS-DA's AUC=0.855 comes entirely from direct embedding lookup + interaction-matrix attention, NOT from nutritional/temporal graph structure.
+      Claims of 'heterogeneous graph awareness' require explicit verification that edge types are consumed in forward propagation.
+      <br><br>
+      <strong>EXP-F v2 (planned):</strong> NutriGraphNet (routes messages through all 9 edge types via SAGEConv) + NGCF with 50% interaction dilution for valid topology ablation.
     </div>
   </div>
 </div>
@@ -411,23 +421,102 @@ Density & MF & LightGCN & NGCF & SGL \\
     <pre id="latex4">
 \begin{table}[t]
 \centering
-\caption{HFRS-DA performance vs. $\lambda_\text{health}$ (EXP-C). All values identical to 4 decimal places.}
+\caption{HFRS-DA performance vs. $\lambda_\text{health}$ (EXP-C). All metrics identical across four orders of magnitude.
+         Root cause: health loss backpropagation path is architecturally severed in HFRS-DA.}
 \label{tab:lambda}
 \begin{tabular}{cccccc}
 \toprule
 $\lambda_\text{health}$ & AUC & F1 & HR@10 & NDCG@10 & MRR \\
 \midrule
-0.000 & 0.8551 & 0.7200 & 0.7340 & 0.5977 & 0.5634 \\
-0.001 & 0.8551 & 0.7200 & 0.7340 & 0.5977 & 0.5634 \\
-0.010 & 0.8551 & 0.7200 & 0.7340 & 0.5977 & 0.5634 \\
-0.100 & 0.8551 & 0.7200 & 0.7340 & 0.5977 & 0.5634 \\
-1.000 & 0.8551 & 0.7200 & 0.7340 & 0.5977 & 0.5634 \\
+0.000 & 0.8551 & 0.7200 & 0.7340 & 0.5977 & 0.5635 \\
+0.001 & 0.8551 & 0.7200 & 0.7340 & 0.5977 & 0.5635 \\
+0.010 & 0.8551 & 0.7200 & 0.7340 & 0.5977 & 0.5635 \\
+0.100 & 0.8551 & 0.7200 & 0.7340 & 0.5977 & 0.5635 \\
+1.000 & 0.8551 & 0.7200 & 0.7340 & 0.5977 & 0.5635 \\
 \midrule
-$\Delta$ (max-min) & $<$1.3e-7 & $<$3e-6 & 0.0000 & 0.0000 & 3e-5 \\
+$\Delta$ (max--min) & $<$1.3e-7 & 0.0000 & 0.0000 & 0.0000 & 0.0000 \\
 \bottomrule
 \end{tabular}
 \end{table}
     </pre>
+  </div>
+
+  <div class="section">
+    <div class="section-title">LaTeX Table D — Embedding Dimension Sweep (HR@10 + AUC)</div>
+    <button class="copy-btn" onclick="copyCode('latex5')">Copy</button>
+    <pre id="latex5">
+\begin{table}[t]
+\centering
+\caption{HR@10 and AUC vs. embedding dimension $d$ (EXP-D). 
+         HFRS-DA AUC at $d{=}256$ is an anomalous collapse ($\dagger$; $-27$p from avg of $d{\le}128$).}
+\label{tab:dim}
+\begin{tabular}{c|ccccc|ccccc}
+\toprule
+ & \multicolumn{5}{c|}{HR@10} & \multicolumn{5}{c}{AUC} \\
+$d$ & MF & LightGCN & NGCF & SGL & HFRS-DA & MF & LightGCN & NGCF & SGL & HFRS-DA \\
+\midrule
+16  & 0.685 & 0.714 & 0.710 & 0.270 & 0.743 & 0.504 & 0.838 & 0.864 & 0.655 & 0.857 \\
+32  & 0.719 & 0.730 & 0.777 & 0.313 & \textbf{0.755} & 0.514 & 0.842 & 0.876 & 0.668 & \textbf{0.862} \\
+64  & 0.730 & 0.711 & 0.781 & 0.347 & 0.753 & 0.509 & 0.822 & 0.877 & 0.687 & 0.855 \\
+128 & 0.753 & 0.734 & 0.783 & 0.381 & 0.752 & 0.535 & 0.831 & 0.879 & 0.704 & 0.816 \\
+256 & \textbf{0.753} & \textbf{0.744} & \textbf{0.787} & \textbf{0.421} & 0.718 & \textbf{0.543} & \textbf{0.841} & \textbf{0.881} & \textbf{0.722} & 0.574$^\dagger$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+    </pre>
+  </div>
+
+  <div class="section">
+    <div class="section-title">LaTeX Table F — Graph Ablation (Topology Invariance)</div>
+    <button class="copy-btn" onclick="copyCode('latex6')">Copy</button>
+    <pre id="latex6">
+\begin{table}[t]
+\centering
+\caption{EXP-F: Graph component ablation on HFRS-DA ($d{=}64$, 5-fold CV).
+         All ablation variants are \emph{mathematically identical} ($\Delta \text{HR@10} < 10^{-10}$), 
+         demonstrating that HFRS-DA is \textbf{topologically invariant}: auxiliary edge types 
+         are present in the data but never consumed in forward propagation.}
+\label{tab:ablation}
+\begin{tabular}{lccccc}
+\toprule
+Variant & HR@10 & NDCG@10 & MRR & AUC & F1 \\
+\midrule
+Full Graph             & 0.7340 & 0.5977 & 0.5635 & 0.8551 & 0.7200 \\
+w/o Ingredient         & 0.7340 & 0.5977 & 0.5635 & 0.8551 & 0.7200 \\
+w/o Time               & 0.7340 & 0.5977 & 0.5635 & 0.8551 & 0.7200 \\
+w/o Food-Similar       & 0.7340 & 0.5977 & 0.5635 & 0.8551 & 0.7200 \\
+w/o Ingredient + Time  & 0.7340 & 0.5977 & 0.5635 & 0.8551 & 0.7200 \\
+\midrule
+$\Delta$ (max--min)    & 0.0000 & 0.0000 & 0.0000 & 0.0000 & 0.0000 \\
+\bottomrule
+\end{tabular}
+\end{table}
+    </pre>
+  </div>
+
+  <div class="section">
+    <div class="section-title">Key Numbers Reference (Paper Section 6 — v0.4)</div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Claim</th><th>Experiment</th><th>Value</th></tr></thead>
+        <tbody>
+          <tr><td>SGL best aug ratio</td><td>EXP-A</td><td class="best">p=0.0 → HR@10=0.3604</td></tr>
+          <tr><td>SGL worst aug ratio</td><td>EXP-A</td><td class="worst">p=0.5 → HR@10=0.3520 (Δ=−0.0084)</td></tr>
+          <tr><td>SGL collapse at 10% density</td><td>EXP-B</td><td class="worst">0.092 vs MF=0.344 (3.74×), vs LightGCN=0.513 (5.58×)</td></tr>
+          <tr><td>LightGCN best at low density</td><td>EXP-B</td><td class="best">HR@10=0.513 at 10% (best all models)</td></tr>
+          <tr><td>NGCF best at full density</td><td>EXP-B</td><td class="best">HR@10=0.777 at 100%</td></tr>
+          <tr><td>LightGCN/NGCF crossover</td><td>EXP-B</td><td>30%→50% density (3.78→6.3 int/user)</td></tr>
+          <tr><td>MF AUC structural ceiling</td><td>EXP-B/D</td><td class="worst">≤0.547 regardless of density or dim</td></tr>
+          <tr><td>λ_health sensitivity (HFRS-DA)</td><td>EXP-C</td><td class="worst">Δ HR@10 = 0.0000 for all λ ∈ [0.001, 1.0]</td></tr>
+          <tr><td>HFRS-DA optimal dim</td><td>EXP-D</td><td class="best">d=32 → HR@10=0.755, AUC=0.862</td></tr>
+          <tr><td>NGCF optimal dim</td><td>EXP-D</td><td class="best">d=256 → HR@10=0.787, AUC=0.881</td></tr>
+          <tr><td>HFRS-DA dim=256 AUC collapse</td><td>EXP-D</td><td class="worst">AUC=0.574 vs avg 0.848 (Δ=−0.274)</td></tr>
+          <tr><td>HFRS-DA topology invariance</td><td>EXP-F</td><td class="worst">Δ HR@10 = 0.000 across all 5 ablations</td></tr>
+          <tr><td>Best overall HR@10</td><td>EXP-D</td><td class="best">NGCF d=256: 0.7867</td></tr>
+          <tr><td>Best overall AUC</td><td>EXP-D</td><td class="best">NGCF d=256: 0.8810</td></tr>
+        </tbody>
+      </table>
+    </div>
   </div>
 </div>
 
