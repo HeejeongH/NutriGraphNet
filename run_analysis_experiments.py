@@ -96,22 +96,32 @@ def exp_B_sparsity_sweep(quick=False):
 
 def exp_C_lambda_sweep(quick=False):
     """EXP-C: λ_health 0.0 → 1.0 — NutriGraphNet full model
-    
+
     버그 수정 이력: _get_food_health()에서 edge_attr=None crash → try/except 수정
     이제 health loss가 실제로 작동함. 이 실험으로 λ_health 최적값 확인.
     Research Question: λ_health가 health-aware 추천에 미치는 영향
+
+    메모리 최적화: 2GB 환경에서 GATConv OOM 방지
+      - hidden_channels=64, out_channels=32 (default 128/64에서 축소)
+      - num_layers=1 (default 3에서 축소)
+      - heads=2 (default 4에서 축소)
+      논문 수치는 이 설정 기준으로 보고.
     """
     lambdas = [0.0, 0.001, 0.005, 0.01, 0.05, 0.1, 0.5, 1.0]
     n_folds = 1 if quick else 5
     epochs  = 30  if quick else 300
     for lam in lambdas:
         run([
-            "--variants",      "full",   # NutriGraphNet full model
-            "--lambda_health", str(lam),
-            "--n_folds",       str(n_folds),
-            "--epochs",        str(epochs),
-            "--patience",      "10" if quick else "30",
-            "--print_every",   "5" if quick else "20",
+            "--variants",         "full",   # NutriGraphNet full model
+            "--lambda_health",    str(lam),
+            "--n_folds",          str(n_folds),
+            "--epochs",           str(epochs),
+            "--patience",         "10" if quick else "30",
+            "--print_every",      "5" if quick else "20",
+            "--hidden_channels",  "64",    # OOM 방지: 128→64
+            "--out_channels",     "32",    # OOM 방지: 64→32
+            "--num_layers",       "1",     # OOM 방지: 3→1
+            "--heads",            "2",     # OOM 방지: 4→2
         ], f"results/analysis/C_lambda_{lam}", f"λ_health={lam} (NutriGraphNet)")
 
 
