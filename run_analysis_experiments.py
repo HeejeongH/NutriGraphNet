@@ -108,21 +108,26 @@ def exp_C_lambda_sweep(quick=False):
       논문 수치는 이 설정 기준으로 보고.
     """
     lambdas = [0.0, 0.001, 0.005, 0.01, 0.05, 0.1, 0.5, 1.0]
-    n_folds = 1 if quick else 3   # 5→3: 2GB CPU 환경에서 실용적 fold 수
-    epochs  = 30  if quick else 150  # 300→150: early stopping으로 충분
+    n_folds = 1 if quick else 1   # 1-fold: 2GB CPU 환경 한계 (~7min/lambda)
+    epochs  = 30  if quick else 150  # early stopping으로 충분
+    seeds   = [42] if quick else [42, 123, 777]  # 3 seed → std 계산
     for lam in lambdas:
-        run([
-            "--variants",         "full",   # NutriGraphNet full model
-            "--lambda_health",    str(lam),
-            "--n_folds",          str(n_folds),
-            "--epochs",           str(epochs),
-            "--patience",         "10" if quick else "20",  # 30→20
-            "--print_every",      "5" if quick else "20",
-            "--hidden_channels",  "64",    # OOM 방지: 128→64
-            "--out_channels",     "32",    # OOM 방지: 64→32
-            "--num_layers",       "1",     # OOM 방지: 3→1
-            "--heads",            "2",     # OOM 방지: 4→2
-        ], f"results/analysis/C_lambda_{lam}", f"λ_health={lam} (NutriGraphNet)")
+        for seed in seeds:
+            out_dir = f"results/analysis/C_lambda_{lam}" if len(seeds)==1 \
+                      else f"results/analysis/C_lambda_{lam}_s{seed}"
+            run([
+                "--variants",         "full",   # NutriGraphNet full model
+                "--lambda_health",    str(lam),
+                "--n_folds",          str(n_folds),
+                "--epochs",           str(epochs),
+                "--patience",         "10" if quick else "20",
+                "--print_every",      "5" if quick else "20",
+                "--hidden_channels",  "64",    # OOM 방지: 128→64
+                "--out_channels",     "32",    # OOM 방지: 64→32
+                "--num_layers",       "1",     # OOM 방지: 3→1
+                "--heads",            "2",     # OOM 방지: 4→2
+                "--seed",             str(seed),
+            ], out_dir, f"λ_health={lam} seed={seed} (NutriGraphNet)")
 
 
 def exp_D_dim_sweep(quick=False):
