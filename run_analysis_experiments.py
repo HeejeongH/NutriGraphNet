@@ -246,42 +246,75 @@ def exp_G_layer_depth_sweep(quick=False):
            f"Layer Depth: num_layers={nl} ({models})")
 
 
-def collect_and_print_summary():
-    """Collect all results and print summary table."""
-    base = Path("results/analysis")
-    if not base.exists():
-        print("No results found yet.")
+def collect_and_print_summary(extra_dirs=None):
+    """Collect all results and print summary table.
+    
+    extra_dirs: 추가로 스캔할 디렉토리 리스트 (예: ['results/gpu'])
+    results/analysis 와 results/gpu 를 모두 자동으로 스캔함.
+    """
+    # 스캔할 기본 디렉토리 목록 (존재하는 것만)
+    scan_dirs = []
+    for candidate in ["results/analysis", "results/gpu"]:
+        p = Path(candidate)
+        if p.exists():
+            scan_dirs.append(p)
+    if extra_dirs:
+        for d in extra_dirs:
+            p = Path(d)
+            if p.exists() and p not in scan_dirs:
+                scan_dirs.append(p)
+
+    if not scan_dirs:
+        print("No results found yet. (results/analysis or results/gpu not found)")
         return
 
     summary = {}
-    for d in sorted(base.iterdir()):
-        rf = d / "all_results.json"
-        if not rf.exists():
-            continue
-        with open(rf) as f:
-            data = json.load(f)
-        for model_key, v in data.items():
-            agg = v.get("aggregated", {})
-            summary[d.name + "/" + model_key] = {
-                "AUC":      agg.get("auc",      {}).get("mean", None),
-                "F1":       agg.get("f1",        {}).get("mean", None),
-                "HR@10":    agg.get("HR@10",     {}).get("mean", None),
-                "NDCG@10":  agg.get("NDCG@10",   {}).get("mean", None),
-                "MRR":      agg.get("MRR",        {}).get("mean", None),
-                "Health@10":agg.get("HealthGain@10",{}).get("mean", None),
-            }
+    for base in scan_dirs:
+        prefix = base.name  # 'analysis' or 'gpu'
+        for d in sorted(base.iterdir()):
+            if not d.is_dir():
+                continue
+            rf = d / "all_results.json"
+            if not rf.exists():
+                print(f"  [SKIP] {d} — all_results.json not found (experiment may have failed)")
+                continue
+            try:
+                with open(rf) as f:
+                    data = json.load(f)
+            except Exception as e:
+                print(f"  [ERROR] {rf}: {e}")
+                continue
+            for model_key, v in data.items():
+                agg = v.get("aggregated", {})
+                key = f"{prefix}/{d.name}/{model_key}"
+                summary[key] = {
+                    "AUC":      agg.get("auc",           {}).get("mean", None),
+                    "F1":       agg.get("f1",             {}).get("mean", None),
+                    "HR@10":    agg.get("HR@10",          {}).get("mean", None),
+                    "NDCG@10":  agg.get("NDCG@10",        {}).get("mean", None),
+                    "MRR":      agg.get("MRR",            {}).get("mean", None),
+                    "Health@10":agg.get("HealthGain@10",  {}).get("mean", None),
+                }
 
-    print(f"\n{'Experiment':<50} {'AUC':>7} {'F1':>7} {'HR@10':>7} {'NDCG@10':>9} {'MRR':>7} {'HG@10':>7}")
-    print("-" * 95)
+    if not summary:
+        print("No completed experiments found (all_results.json missing in all dirs).")
+        return
+
+    print(f"\n{'Experiment':<55} {'AUC':>7} {'F1':>7} {'HR@10':>7} {'NDCG@10':>9} {'MRR':>7} {'HG@10':>7}")
+    print("-" * 100)
     for k, m in summary.items():
         def fmt(v): return f"{v:.4f}" if v is not None else "  N/A "
-        print(f"{k:<50} {fmt(m['AUC'])} {fmt(m['F1'])} {fmt(m['HR@10'])} "
+        print(f"{k:<55} {fmt(m['AUC'])} {fmt(m['F1'])} {fmt(m['HR@10'])} "
               f"{fmt(m['NDCG@10'])} {fmt(m['MRR'])} {fmt(m['Health@10'])}")
 
-    # Save summary JSON
-    with open("results/analysis/SUMMARY.json", "w") as f:
+    # Save summary JSON — results/analysis 우선, 없으면 results/gpu
+    out_base = Path("results/analysis") if Path("results/analysis").exists() else Path("results/gpu")
+    out_base.mkdir(parents=True, exist_ok=True)
+    out_path = out_base / "SUMMARY.json"
+    with open(out_path, "w") as f:
         json.dump(summary, f, indent=2)
-    print(f"\n✅ Summary saved → results/analysis/SUMMARY.json")
+    print(f"\n✅ Summary saved → {out_path}")
+    print(f"   Total experiments: {len(summary)} entries")
     return summary
 
 

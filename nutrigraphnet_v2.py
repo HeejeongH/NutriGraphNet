@@ -2367,23 +2367,39 @@ def main():
     all_results = {}
 
     for variant in variants:
-        res = run_cross_validation(data, args, device, variant)
-        all_results[variant] = res
+        try:
+            res = run_cross_validation(data, args, device, variant)
+            all_results[variant] = res
 
-        # Save per-variant result
-        with open(f"{args.output_dir}/results_{variant}.json", 'w') as f:
-            json.dump({'variant': variant,
-                       'aggregated': res['aggregated'],
-                       'fold_results': res['fold_results']}, f, indent=2,
-                      cls=_NumpyEncoder)
+            # Save per-variant result immediately
+            with open(f"{args.output_dir}/results_{variant}.json", 'w') as f:
+                json.dump({'variant': variant,
+                           'aggregated': res['aggregated'],
+                           'fold_results': res['fold_results']}, f, indent=2,
+                          cls=_NumpyEncoder)
+
+            # ★ 매 variant마다 all_results.json 즉시 저장 (중간 실패해도 보존)
+            with open(f"{args.output_dir}/all_results.json", 'w') as f:
+                json.dump({v: {'aggregated': r['aggregated'],
+                               'fold_results': r['fold_results']}
+                           for v, r in all_results.items()}, f, indent=2,
+                          cls=_NumpyEncoder)
+            print(f"  [saved] all_results.json updated ({list(all_results.keys())})")
+
+        except Exception as e:
+            print(f"\n  [ERROR] variant={variant} failed: {e}")
+            import traceback; traceback.print_exc()
+            # 지금까지 성공한 결과는 보존
+            if all_results:
+                with open(f"{args.output_dir}/all_results.json", 'w') as f:
+                    json.dump({v: {'aggregated': r['aggregated'],
+                                   'fold_results': r['fold_results']}
+                               for v, r in all_results.items()}, f, indent=2,
+                              cls=_NumpyEncoder)
+                print(f"  [saved] partial all_results.json ({list(all_results.keys())})")
+            continue
+
         gc_collect()
-
-    # Save all
-    with open(f"{args.output_dir}/all_results.json", 'w') as f:
-        json.dump({v: {'aggregated': r['aggregated'],
-                       'fold_results': r['fold_results']}
-                   for v, r in all_results.items()}, f, indent=2,
-                  cls=_NumpyEncoder)
 
     # ── Visualize ──
     print("\nGenerating figures...")
