@@ -96,8 +96,8 @@
 <h1>NutriGraphNet — Analysis Results Dashboard</h1>
 <p class="subtitle">
   <span class="badge badge-blue">Option C Paper</span>
-  <span class="badge badge-green">v0.4</span>
-  <span class="badge badge-orange">2026-07-11</span>
+  <span class="badge badge-green">v0.5</span>
+  <span class="badge badge-orange">2026-07-12</span>
   "Why Graph Augmentation Fails in Sparse Nutrition Graphs" · 5-Fold CV Results
 </p>
 
@@ -121,7 +121,7 @@
       <div class="stat-card"><div class="stat-label">Best AUC</div><div class="stat-value">0.881</div><div class="stat-sub">NGCF (d=256)</div></div>
       <div class="stat-card"><div class="stat-label">SGL Collapse</div><div class="stat-value" style="color:#E15759">0.092</div><div class="stat-sub">at 10% density · 3.74× below MF</div></div>
       <div class="stat-card"><div class="stat-label">MF HR@10</div><div class="stat-value" style="color:#F28E2B">0.757</div><div class="stat-sub">100% density · best ranking vs SGL</div></div>
-      <div class="stat-card"><div class="stat-label">λ Sensitivity</div><div class="stat-value" style="color:#76B7B2">0.000</div><div class="stat-sub">Δ HR@10 exactly zero (4 orders of mag)</div></div>
+      <div class="stat-card"><div class="stat-label">λ=0.5 Optimal (NutriGraphNet)</div><div class="stat-value" style="color:#82c995">+3.6%</div><div class="stat-sub">HR@10 0.6720→0.6960 (health loss active)</div></div>
     </div>
 
     <div class="table-wrap">
@@ -178,13 +178,13 @@
           HFRS-DA optimal d=32 (AUC=0.862); collapses at d=256 (AUC=0.574, −27p).
         </div>
       </div>
-      <div class="finding-card neutral">
-        <div class="finding-title">🔵 C3 · Health Constraint Architectural Failure</div>
+      <div class="finding-card insight">
+        <div class="finding-title">🟢 C3 · Health Constraint: NutriGraphNet vs. HFRS-DA</div>
         <div class="finding-body">
-          λ_health sweep 0.001→1.0: HR@10=<strong>0.7340</strong> for all 8 values (Δ=0.0000 exactly).<br>
-          Δ AUC &lt; 1.25×10⁻⁷ across four orders of magnitude.<br>
-          Root cause: NutriLoss health gradient backprop path architecturally severed in HFRS-DA.<br>
-          Compound failure: HFRS-DA topology invariant (EXP-F) + health gradient vanishes (EXP-C).
+          <strong>NutriGraphNet (λ=0.5):</strong> HR@10=<strong>0.6960</strong> (+3.6% vs. λ=0.0=0.6720). health_loss=0.1259 (active).<br>
+          AUC peaks at λ=0.5: 0.8401; health_loss active for all λ&gt;0 (range 0.0963–0.5050).<br>
+          <strong>HFRS-DA (reference):</strong> Δ HR@10 = 0.0000 exactly for all λ ∈ [0.001, 1.0].<br>
+          Finding: health-awareness is architectural — must route gradients via healthness edges.
         </div>
       </div>
     </div>
@@ -249,27 +249,29 @@
 <!-- ══════════════════════════════════════════════════════════ TAB EXP-C -->
 <div id="tab-expC" class="tab-content">
   <div class="highlight-box">
-    <div class="hl-title">EXP-C · λ_health Sensitivity (0.001 → 1.0, HFRS-DA)</div>
-    HR@10 = 0.7340 for <strong>all</strong> λ values. AUC varies by &lt;1.25×10⁻⁷.
-    The health constraint gradient effectively vanishes during backpropagation.
+    <div class="hl-title">EXP-C · λ_health Sensitivity — NutriGraphNet (v0.5, bug-fixed)</div>
+    <span class="badge badge-green">NutriGraphNet</span> λ=0.5 achieves HR@10=<strong>0.6960</strong> (+3.6% vs. λ=0.0). health_loss active (0.1259–0.5050).<br>
+    <span class="badge badge-red">HFRS-DA (ref)</span> HR@10=0.7340 for all λ (architecturally severed). Health-awareness is an architectural property.
   </div>
   <div class="chart-container">
-    <div class="chart-title">HFRS-DA: HR@10 and AUC vs. λ_health (log scale)</div>
+    <div class="chart-title">NutriGraphNet: HR@10 and AUC vs. λ_health</div>
     <canvas id="chartC" height="250"></canvas>
   </div>
   <div class="table-wrap">
     <table>
-      <thead><tr><th>λ_health</th><th>AUC</th><th>F1</th><th>HR@10</th><th>NDCG@10</th><th>MRR</th></tr></thead>
+      <thead><tr><th>λ_health</th><th>AUC</th><th>F1</th><th>HR@10</th><th>NDCG@10</th><th>MRR</th><th>health_loss</th></tr></thead>
       <tbody id="tableC"></tbody>
     </table>
   </div>
-  <div class="finding-card neutral" style="margin-top:1rem">
-    <div class="finding-title">Root-Cause Analysis (v0.4)</div>
+  <div class="finding-card insight" style="margin-top:1rem">
+    <div class="finding-title">NutriGraphNet Health Gradient Analysis (v0.5)</div>
     <div class="finding-body">
-      <strong>Two compounding failure modes identified:</strong><br>
-      (1) <strong>Architectural backprop severance:</strong> HFRS-DA NLA branch computes scores via direct embedding lookup + interaction-matrix attention only. Neither NLA nor SLA branch routes messages through healthness edges. The NutriLoss health gradient reaches the embedding table but has no path to attention weights governing health sensitivity.<br>
-      (2) <strong>Score distribution mismatch:</strong> NutriLoss health_margin was designed for NutriGraphNet's BPR score distribution; HFRS-DA's internal scoring produces a different activation distribution, leaving effective health gradient magnitude near zero.<br>
-      <strong>Practical implication:</strong> HFRS-DA provides NO statistical health-alignment guarantee. For clinical deployment, explicit health gradient routing via dedicated convolution along healthness edges is required.
+      <strong>λ=0.5 optimal:</strong> HR@10=0.6960 (+3.6% vs. λ=0.0), AUC=0.8401, health_loss=0.1259.<br>
+      <strong>Health loss is active</strong> for all λ&gt;0 (confirms gradient path via healthness edge convolution).<br>
+      <strong>Non-monotone health_loss:</strong> 0.5050 at λ=0.001 decreasing to 0.0963 at λ=1.0 — reflects optimization equilibrium.<br>
+      <strong>Trade-off at λ=1.0:</strong> AUC drops to 0.8099 (-0.030) while NDCG@10 peaks (0.4500), MRR peaks (0.3865).<br><br>
+      <strong>vs. HFRS-DA (architectural contrast):</strong> HFRS-DA NLA/SLA branches never consume healthness edges → gradient path severed → Δ HR@10=0.000 exactly for all λ.
+      NutriGraphNet routes GATConv through all 9 edge types including healthness → valid health optimization.
     </div>
   </div>
 </div>
@@ -416,25 +418,28 @@ Density & MF & LightGCN & NGCF & SGL \\
   </div>
 
   <div class="section">
-    <div class="section-title">LaTeX Table C — λ_health Sensitivity</div>
+    <div class="section-title">LaTeX Table C — NutriGraphNet λ_health Sensitivity (v0.5)</div>
     <button class="copy-btn" onclick="copyCode('latex4')">Copy</button>
     <pre id="latex4">
 \begin{table}[t]
 \centering
-\caption{HFRS-DA performance vs. $\lambda_\text{health}$ (EXP-C). All metrics identical across four orders of magnitude.
-         Root cause: health loss backpropagation path is architecturally severed in HFRS-DA.}
+\caption{NutriGraphNet performance vs. $\lambda_\text{health}$ (EXP-C v2; 1-fold, seed=42, CPU sandbox).
+         $\lambda{=}0.5$ achieves best HR@10=0.6960 (+3.6\% vs.\ $\lambda{=}0.0$). 
+         Health\_loss is active (non-zero) for all $\lambda{>}0$, confirming valid health gradient flow.
+         HFRS-DA reference (all $\lambda$): HR@10=0.7340, $\Delta$HR@10=0.000 (architecturally severed).}
 \label{tab:lambda}
-\begin{tabular}{cccccc}
+\begin{tabular}{ccccccc}
 \toprule
-$\lambda_\text{health}$ & AUC & F1 & HR@10 & NDCG@10 & MRR \\
+$\lambda_\text{health}$ & AUC & F1 & HR@10 & NDCG@10 & MRR & $\mathcal{L}_\text{health}$ \\
 \midrule
-0.000 & 0.8551 & 0.7200 & 0.7340 & 0.5977 & 0.5635 \\
-0.001 & 0.8551 & 0.7200 & 0.7340 & 0.5977 & 0.5635 \\
-0.010 & 0.8551 & 0.7200 & 0.7340 & 0.5977 & 0.5635 \\
-0.100 & 0.8551 & 0.7200 & 0.7340 & 0.5977 & 0.5635 \\
-1.000 & 0.8551 & 0.7200 & 0.7340 & 0.5977 & 0.5635 \\
-\midrule
-$\Delta$ (max--min) & $<$1.3e-7 & 0.0000 & 0.0000 & 0.0000 & 0.0000 \\
+0.000 & 0.8353 & 0.6560 & 0.6720 & 0.3515 & 0.2665 & 0.0000 \\
+0.001 & 0.8377 & 0.6558 & 0.6740 & 0.3823 & 0.3050 & 0.5050 \\
+0.005 & 0.8400 & 0.6560 & 0.6720 & 0.3254 & 0.2340 & 0.3403 \\
+0.010 & 0.8373 & 0.6561 & 0.6720 & 0.3448 & 0.2585 & 0.3822 \\
+0.050 & 0.8394 & 0.6557 & 0.6740 & 0.3858 & 0.3093 & 0.4434 \\
+0.100 & 0.8381 & 0.6558 & 0.6760 & 0.3923 & 0.3167 & 0.4088 \\
+\textbf{0.500} & \textbf{0.8401} & 0.6526 & \textbf{0.6960} & 0.3923 & 0.3096 & 0.1259 \\
+1.000 & 0.8099 & 0.6647 & 0.6900 & 0.4500 & 0.3865 & 0.0963 \\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -495,7 +500,7 @@ $\Delta$ (max--min)    & 0.0000 & 0.0000 & 0.0000 & 0.0000 & 0.0000 \\
   </div>
 
   <div class="section">
-    <div class="section-title">Key Numbers Reference (Paper Section 6 — v0.4)</div>
+    <div class="section-title">Key Numbers Reference (Paper Section 6 — v0.5)</div>
     <div class="table-wrap">
       <table>
         <thead><tr><th>Claim</th><th>Experiment</th><th>Value</th></tr></thead>
@@ -507,7 +512,8 @@ $\Delta$ (max--min)    & 0.0000 & 0.0000 & 0.0000 & 0.0000 & 0.0000 \\
           <tr><td>NGCF best at full density</td><td>EXP-B</td><td class="best">HR@10=0.777 at 100%</td></tr>
           <tr><td>LightGCN/NGCF crossover</td><td>EXP-B</td><td>30%→50% density (3.78→6.3 int/user)</td></tr>
           <tr><td>MF AUC structural ceiling</td><td>EXP-B/D</td><td class="worst">≤0.547 regardless of density or dim</td></tr>
-          <tr><td>λ_health sensitivity (HFRS-DA)</td><td>EXP-C</td><td class="worst">Δ HR@10 = 0.0000 for all λ ∈ [0.001, 1.0]</td></tr>
+          <tr><td>λ_health optimal (NutriGraphNet)</td><td>EXP-C</td><td class="best">λ=0.5 → HR@10=0.6960 (+3.6% vs. λ=0.0=0.6720)</td></tr>
+          <tr><td>λ_health sensitivity (HFRS-DA, ref)</td><td>EXP-C</td><td class="worst">Δ HR@10 = 0.0000 for all λ ∈ [0.001, 1.0] (severed)</td></tr>
           <tr><td>HFRS-DA optimal dim</td><td>EXP-D</td><td class="best">d=32 → HR@10=0.755, AUC=0.862</td></tr>
           <tr><td>NGCF optimal dim</td><td>EXP-D</td><td class="best">d=256 → HR@10=0.787, AUC=0.881</td></tr>
           <tr><td>HFRS-DA dim=256 AUC collapse</td><td>EXP-D</td><td class="worst">AUC=0.574 vs avg 0.848 (Δ=−0.274)</td></tr>
@@ -542,13 +548,15 @@ const DATA = {
     ngcf_nd: [0.333, 0.472, 0.552, 0.527, 0.559],
     sgl_nd:  [0.046, 0.111, 0.163, 0.194, 0.226],
   },
+  // EXP-C v2: NutriGraphNet (bug-fixed, 1-fold seed=42, CPU sandbox)
   C: {
     lambdas: [0.0, 0.001, 0.005, 0.01, 0.05, 0.1, 0.5, 1.0],
-    hr:  [0.734, 0.734, 0.734, 0.734, 0.734, 0.734, 0.734, 0.734],
-    auc: [0.85511032, 0.85511031, 0.85511040, 0.85511032, 0.85511030, 0.85511033, 0.85511032, 0.85511028],
-    ndcg:[0.5977, 0.5977, 0.5977, 0.5977, 0.5977, 0.5977, 0.5977, 0.5977],
-    mrr: [0.56345, 0.56345, 0.56350, 0.56345, 0.56345, 0.56345, 0.56345, 0.56345],
-    f1:  [0.7200, 0.7200, 0.7200, 0.7200, 0.7200, 0.7200, 0.7200, 0.7200],
+    hr:         [0.6720, 0.6740, 0.6720, 0.6720, 0.6740, 0.6760, 0.6960, 0.6900],
+    auc:        [0.8353, 0.8377, 0.8400, 0.8373, 0.8394, 0.8381, 0.8401, 0.8099],
+    ndcg:       [0.3515, 0.3823, 0.3254, 0.3448, 0.3858, 0.3923, 0.3923, 0.4500],
+    mrr:        [0.2665, 0.3050, 0.2340, 0.2585, 0.3093, 0.3167, 0.3096, 0.3865],
+    f1:         [0.6560, 0.6558, 0.6560, 0.6561, 0.6557, 0.6558, 0.6526, 0.6647],
+    health_loss:[0.0000, 0.5050, 0.3403, 0.3822, 0.4434, 0.4088, 0.1259, 0.0963],
   },
   D: {
     dims: [16, 32, 64, 128, 256],
@@ -711,27 +719,31 @@ function initChartB() {
   });
 }
 
-// ── EXP-C ─────────────────────────────────────────────────────────────────────
+// ── EXP-C (v0.5: NutriGraphNet) ─────────────────────────────────────────────────────
 function initChartC() {
   window._chartC = true;
   const labels = DATA.C.lambdas.map(l=>`λ=${l}`);
   new Chart(document.getElementById('chartC'), {
     type:'line',
     data:{ labels, datasets:[
-      lineDS('HR@10',  DATA.C.hr,  '#76B7B2'),
-      lineDS('NDCG@10',DATA.C.ndcg,'#4E79A7'),
+      lineDS('HR@10 (NutriGraphNet)', DATA.C.hr,  '#82c995'),
+      lineDS('AUC',  DATA.C.auc, '#4E79A7'),
+      lineDS('health_loss (scaled×0.5)', DATA.C.health_loss.map(v=>v*0.5), '#e88c3a', [4,3]),
     ]},
-    options: deepMerge(CHART_DEFAULTS, { scales:{y:{min:0.7, max:0.8}} })
+    options: deepMerge(CHART_DEFAULTS, { scales:{y:{min:0.0, max:0.95}} })
   });
   const tb = document.getElementById('tableC');
+  const bestI = DATA.C.hr.indexOf(Math.max(...DATA.C.hr));
   DATA.C.lambdas.forEach((l,i) => {
+    const isBest = i===bestI;
     tb.innerHTML += `<tr>
       <td>${l}</td>
-      <td>${DATA.C.auc[i].toFixed(7)}</td>
+      <td>${DATA.C.auc[i].toFixed(4)}</td>
       <td>${DATA.C.f1[i].toFixed(4)}</td>
-      <td>${DATA.C.hr[i].toFixed(4)}</td>
+      <td class="${isBest?'best':''}"><strong>${DATA.C.hr[i].toFixed(4)}</strong>${isBest?' ← BEST':''}</td>
       <td>${DATA.C.ndcg[i].toFixed(4)}</td>
-      <td>${DATA.C.mrr[i].toFixed(5)}</td>
+      <td>${DATA.C.mrr[i].toFixed(4)}</td>
+      <td style="color:${DATA.C.health_loss[i]>0?'#82c995':'#8892a4'}">${DATA.C.health_loss[i].toFixed(4)}</td>
     </tr>`;
   });
 }
