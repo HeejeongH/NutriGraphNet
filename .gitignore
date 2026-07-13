@@ -54,3 +54,4 @@ cleanup_plan.txt
 
 # Old/Archived files
 etc/old_versions/
+*.pth 
