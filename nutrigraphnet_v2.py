@@ -2333,18 +2333,28 @@ def main():
               f"({ratio*100:.0f}%)")
 
     # ── Option C: graph component ablation ──────────────────────────────────
+    # NOTE (EXP-F v2 bug fix): this data-level zeroing is only meaningful for
+    # NutriGraphNet ('full'), which reads edge_index_dict directly. For
+    # ablation_model in ('ngcf', 'lightgcn'), the *dilution*-based ablation in
+    # _build_ablated_train_ei() needs to read these same edge_index tensors
+    # (still intact) to determine which foods are aux-connected. Zeroing them
+    # here first made that lookup always find an empty set, silently turning
+    # every NGCF/LightGCN ablation variant into a no-op (identical to
+    # full_graph). So: only zero at the data level when ablating NutriGraphNet.
+    _ablation_model_arg = getattr(args, 'ablation_model', 'full')
     _remove_edge_types = []
-    if getattr(args, 'ablate_no_ingredient', False):
-        _remove_edge_types += [('food','contains','ingredient'),
-                                ('ingredient','rev_contains','food')]
-    if getattr(args, 'ablate_no_time', False):
-        _remove_edge_types += [('food','eaten_at','time'),
-                                ('time','rev_eaten_at','food')]
-    if getattr(args, 'ablate_no_healthness', False):
-        _remove_edge_types += [('user','healthness','food'),
-                                ('food','rev_healthness','user')]
-    if getattr(args, 'ablate_no_food_similar', False):
-        _remove_edge_types += [('food','similar','food')]
+    if _ablation_model_arg == 'full':
+        if getattr(args, 'ablate_no_ingredient', False):
+            _remove_edge_types += [('food','contains','ingredient'),
+                                    ('ingredient','rev_contains','food')]
+        if getattr(args, 'ablate_no_time', False):
+            _remove_edge_types += [('food','eaten_at','time'),
+                                    ('time','rev_eaten_at','food')]
+        if getattr(args, 'ablate_no_healthness', False):
+            _remove_edge_types += [('user','healthness','food'),
+                                    ('food','rev_healthness','user')]
+        if getattr(args, 'ablate_no_food_similar', False):
+            _remove_edge_types += [('food','similar','food')]
     for et in _remove_edge_types:
         if et in data.edge_types:
             # BUG FIX: edge_attr=None 하면 PyG가 키를 삭제해서
@@ -2355,6 +2365,14 @@ def main():
             # edge_attr는 삭제하지 않고 유지 — _get_food_health가 edge_index 비어있는지로 판단
     if _remove_edge_types:
         print(f"  [ablation] removed edges: {_remove_edge_types}")
+    elif _ablation_model_arg in ('ngcf', 'lightgcn') and any([
+        getattr(args, 'ablate_no_ingredient', False),
+        getattr(args, 'ablate_no_time', False),
+        getattr(args, 'ablate_no_healthness', False),
+        getattr(args, 'ablate_no_food_similar', False),
+    ]):
+        print(f"  [ablation] ablation_model={_ablation_model_arg}: skipping data-level "
+              f"edge removal, using train_ei dilution instead (see _build_ablated_train_ei)")
 
     print("Data Summary:")
     print(f"  Users        : {data['user'].num_nodes:,}  (feat={data['user'].x.shape[1]})")
