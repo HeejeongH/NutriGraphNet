@@ -1,5 +1,7 @@
 * text=auto eol=lf
 
+*.bat text eol=crlf
+
 *.pkl binary
 *.pt binary
 *.pth binary
