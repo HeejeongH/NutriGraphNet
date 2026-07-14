@@ -11,11 +11,13 @@
          - [v1] NutriGraphNet full model (EXP-F 원래 버전, 구조적 한계 있음)
          - [v2] NGCF 기반 실제 topology ablation (유효한 버전) ← NEW
   EXP-G: Layer depth sweep (num_layers 1~4, LightGCN/NGCF) — over-smoothing 분석 ← NEW
+  EXP-V3: NutriGraphNet v3 k-fold 평가 — v2 vs v3 비교 ← NEW
 
 버그 수정 이력:
   - _get_food_health(): edge_attr=None → PyG EdgeStorage KeyError → try/except 처리
   - ablation에서 edge_attr=None 대신 edge_index=zeros() 사용
   - EXP-F: NGCF 기반 실제 propagation topology ablation 추가
+  - v3: fast_link_split_v3 직접 사용 (build_hetero_graph/kfold_split 의존성 제거)
 
 Usage:
   python run_analysis_experiments.py --exp A      # SGL augmentation sweep
@@ -24,6 +26,7 @@ Usage:
   python run_analysis_experiments.py --exp D      # Embedding dim sweep
   python run_analysis_experiments.py --exp F      # Graph ablation (NGCF 기반)
   python run_analysis_experiments.py --exp G      # Layer depth sweep (NEW)
+  python run_analysis_experiments.py --exp V3     # NutriGraphNet v3 5-fold (NEW)
   python run_analysis_experiments.py --exp all    # 전체 (수 시간 소요)
   python run_analysis_experiments.py --quick      # 빠른 테스트 (1 fold, 30 epochs)
   python run_analysis_experiments.py --exp summary # 결과 요약만
@@ -246,7 +249,135 @@ def exp_G_layer_depth_sweep(quick=False):
            f"Layer Depth: num_layers={nl} ({models})")
 
 
-def collect_and_print_summary(extra_dirs=None):
+def exp_V3_kfold(quick=False):
+    """EXP-V3: NutriGraphNet v3 k-fold cross-validation
+
+    Research Question:
+      v3의 RankDotDecoder + LightGCN pooling + FeatureProjector가
+      v2의 HybridDecoder 대비 NDCG/MRR을 얼마나 개선하는가?
+
+    핵심 변경:
+      - HybridDecoder(Bilinear+Dot+MLP) → RankDotDecoder(순수 dot-product)
+      - DualChannelEncoder → HeteroResGATEncoder (BN + Residual + LightGCN pooling)
+      - FeatureProjector: raw features (user=29, food=17, ingredient=101) 완전 활용
+      - Two-stage training: Phase 1 (BPR+InfoNCE) → Phase 2 (Health fine-tune)
+
+    Expected:
+      NDCG@10: v2=0.4279 → v3≥0.55 (MF 수준 근접)
+      MRR:     v2=0.3378 → v3≥0.45
+      AUC:     v2=0.8620 → v3≥0.88 (유지 또는 개선)
+    """
+    import subprocess, sys
+
+    data_path = "data/processed_data/processed_data_GNN_v5.pkl"
+    n_folds   = 1 if quick else 5
+    epochs    = 30 if quick else 100
+    output    = "results/v3_quick" if quick else "results/v3"
+
+    cmd = [
+        sys.executable, "nutrigraphnet_v3.py",
+        "--data",         data_path,
+        "--output",       output,
+        "--folds",        str(n_folds),
+        "--epochs",       str(epochs),
+        "--hidden",       "32"  if quick else "128",
+        "--out_dim",      "16"  if quick else "64",
+        "--layers",       "1"   if quick else "3",
+        "--heads",        "2"   if quick else "4",
+        "--dropout",      "0.1" if quick else "0.2",
+        "--lr",           "1e-3" if quick else "3e-4",
+        "--lambda_health","0.005",
+        "--phase1_frac",  "0.8",
+        "--infonce_weight","0.05" if quick else "0.1",
+        "--batch_size",   "1024" if quick else "4096",
+        "--device",       "auto",
+        "--seed",         "42",
+    ]
+
+    print(f"\n{'='*60}")
+    print(f"  EXP-V3: NutriGraphNet v3 {'(QUICK)' if quick else '(FULL GPU)'}")
+    print(f"  Folds: {n_folds}, Epochs: {epochs}")
+    print(f"  Output: {output}")
+    print(f"{'='*60}")
+
+    result = subprocess.run(cmd)
+    success = (result.returncode == 0)
+
+    if success:
+        # Print summary from saved results
+        import json
+        from pathlib import Path
+        summary_path = Path(output) / "nutrigraphnet_v3_results.json"
+        if summary_path.exists():
+            with open(summary_path) as f:
+                res = json.load(f)
+            agg = res.get('aggregate', {})
+            print(f"\n[EXP-V3] {'='*40}")
+            print(f"  NutriGraphNet v3 {n_folds}-Fold Results:")
+            for k in ['auc', 'f1', 'HR@5', 'HR@10', 'HR@20', 'NDCG@10', 'MRR']:
+                if k in agg:
+                    std = agg.get(f'{k}_std', 0)
+                    print(f"    {k:20s}: {agg[k]:.4f} ± {std:.4f}")
+            if 'HealthGain@10' in agg:
+                print(f"    {'HealthGain@10':20s}: {agg['HealthGain@10']:.5f}")
+
+            # Compare with v2 GPU results
+            print(f"\n  [v2 vs v3 비교] (GPU 5-fold 기준)")
+            print(f"  {'Metric':20s} {'v2 (GPU)':>12} {'v3 (new)':>12} {'Δ':>8}")
+            print(f"  {'-'*54}")
+            v2_ref = {
+                'auc': 0.8620, 'f1': 0.7877,
+                'HR@10': 0.7484, 'HR@20': 0.8252,
+                'NDCG@10': 0.4279, 'MRR': 0.3378,
+            }
+            for k, v2v in v2_ref.items():
+                v3v = agg.get(k, None)
+                if v3v is not None:
+                    delta = v3v - v2v
+                    sign = '+' if delta >= 0 else ''
+                    print(f"  {k:20s} {v2v:>12.4f} {v3v:>12.4f} {sign}{delta:>7.4f}")
+    return success
+
+
+def collect_and_print_summary_v3():
+    """Collect v3 results and print alongside v2 baselines."""
+    import json
+    from pathlib import Path
+
+    print(f"\n{'='*70}")
+    print("  NutriGraphNet v2 vs v3 비교 Summary")
+    print(f"{'='*70}")
+
+    v3_path = Path("results/v3/nutrigraphnet_v3_results.json")
+    if not v3_path.exists():
+        print(f"v3 결과 없음: {v3_path}")
+        return
+
+    with open(v3_path) as f:
+        v3 = json.load(f)
+
+    agg = v3.get('aggregate', {})
+
+    print(f"\n{'Metric':20s} {'v2 (GPU 5-fold)':>18} {'v3 (GPU 5-fold)':>18}")
+    print("-" * 60)
+    v2_ref = {
+        'AUC':     ('auc',     0.8620),
+        'F1':      ('f1',      0.7877),
+        'HR@5':    ('HR@5',    0.5660),
+        'HR@10':   ('HR@10',   0.7484),
+        'HR@20':   ('HR@20',   0.8252),
+        'NDCG@10': ('NDCG@10', 0.4279),
+        'MRR':     ('MRR',     0.3378),
+    }
+    for label, (k, v2v) in v2_ref.items():
+        v3v = agg.get(k)
+        std = agg.get(f'{k}_std', 0)
+        v3_str = f"{v3v:.4f} ±{std:.4f}" if v3v is not None else "N/A"
+        v2_str = f"{v2v:.4f}"
+        print(f"{label:20s} {v2_str:>18} {v3_str:>18}")
+
+
+
     """Collect all results and print summary table.
     
     extra_dirs: 추가로 스캔할 디렉토리 리스트 (예: ['results/gpu'])
@@ -323,7 +454,7 @@ if __name__ == "__main__":
         description="NutriGraphNet 논문용 분석 실험 runner (전면 보강 버전)"
     )
     ap.add_argument("--exp",   default="all",
-                    choices=["A","B","C","D","F","G","all","summary"],
+                    choices=["A","B","C","D","F","G","V3","all","summary"],
                     help="실행할 실험 선택")
     ap.add_argument("--quick", action="store_true",
                     help="Quick mode: 1 fold, 30 epochs (검증용)")
@@ -337,6 +468,7 @@ if __name__ == "__main__":
     print("  NutriGraphNet 전면 보강 실험 파이프라인")
     print("  버그 수정: _get_food_health() + ablation edge_attr + health logging")
     print("  신규 실험: EXP-F v2 (NGCF topology ablation) + EXP-G (layer sweep)")
+    print("  신규 모델: EXP-V3 (NutriGraphNet v3 — RankDotDecoder + BN + LightGCN pooling)")
     print("="*70)
 
     if args.exp in ("A", "all"):
@@ -362,6 +494,11 @@ if __name__ == "__main__":
     if args.exp in ("G", "all"):
         print("\n📊 EXP-G: Layer Depth Sweep (NEW: over-smoothing 분석)")
         exp_G_layer_depth_sweep(q)
+
+    if args.exp in ("V3", "all"):
+        print("\n📊 EXP-V3: NutriGraphNet v3 (RankDotDecoder + BN + LightGCN pooling)")
+        exp_V3_kfold(q)
+        collect_and_print_summary_v3()
 
     if args.exp != "summary":
         collect_and_print_summary()
