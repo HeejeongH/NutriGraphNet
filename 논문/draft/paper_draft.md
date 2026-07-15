@@ -3,7 +3,7 @@
 
 **Authors:** Heejeong [Last Name]  
 **Target Venue:** Computers in Biology and Medicine (IF: 7.7) / Nutrients (IF: 5.9)  
-**Status:** Draft v1.2 — 2026-07-15 (EXP-C full-parameter 확인 반영: Table C-Full(GPU 5-fold, hidden=128/out=64/layers=3, seed 42) + Finding C5 신규. plateau는 full params에서도 정성적으로 유지(명목 최적 λ=0.005, HR@10=0.7484), 단 λ≥0.5 저하는 -19.6%/-27.3%로 심각(capacity-dependent) + HealthGain@10→0 — health-ranking trade-off가 실제로 작동함을 확인. Finding C3/mechanism (b)/Table S/Design Guidelines/Abstract/Conclusion 갱신, "future confirmation" 문구 해소. v1.1: EXP-F v2 GPU 5-fold 완료 반영: NutriGraphNet ablation(v2a) + NGCF 50% dilution ablation(v2b) 실측치로 6.6절 placeholder 교체. 핵심 발견: NutriGraphNet은 실제로 -1.7%~-21.0% 성능 저하(진짜 topology dependence), NGCF는 -1.2%~-1.4%로 미미(HFRS-DA의 정확히 0.000과 대조). Finding F4-F6 신규 추가, Table S/Design Guidelines/향후 연구 항목 갱신. EXP-C 재실험 반영: 3-seed 집계, λ-robust plateau 발견(Δ<0.004), Finding C1-C4 전면 개정, 권장 λ=0.01로 변경. EXP-G GPU 5-fold 완료 반영: Table G 전면 교체(mean±std, 5-fold), Finding G1–G4 전면 갱신. 핵심 변경: LightGCN L=3 over-smoothing 발견(-8.1%), NGCF layer-invariant 확인. Table S EXP-G 항목 갱신. 이제 A/B/C/D/F(v1+v2)/G 전 실험 GPU 5-fold 완료)
+**Status:** Draft v1.3 — 2026-07-16 (**EXP-B 오표기 수정 — 중대**: 기존 Table B의 "NutriGraphNet" 열은 실측이 아니라 `hfrsda`(HFRS-DA 베이스라인) 수치였음. EXP-B는 NutriGraphNet('full')을 한 번도 돌린 적이 없었음(run_all.bat이 `--variants mf,lightgcn,ngcf,sgl,hfrsda`만 실행). 실측 결과 진짜 NutriGraphNet은 오표기된 값보다 **더 좋음** — 10% 밀도 HR@10=0.738(오표기값 0.656), NGCF 대비 +45.0%. 핵심 발견: NutriGraphNet은 밀도 불변(ratio 0.99×)이며 10% 데이터로 NGCF 전체 데이터 성능의 94.1% 달성. 반면 데이터가 늘어도 개선되지 않아 50% 이상에서 NGCF에 역전당함 → "저밀도 특화 모델"로 재포지셔닝. Finding B1-B7 전면 재작성(B6 신규: NDCG 열세는 health가 아니라 디코더 문제), Table B/B-AUC/B-NDCG 6모델로 교체, Abstract(2)/Contribution 3/§5 관찰5/Table S/Design Guidelines/Conclusion(2) 동기화. HealthGain은 저밀도에서 측정 불가로 표에서 제외(아티팩트, 아래 참조). AUC 역방향 추세는 미해결 과제로 명시. v1.2: EXP-C full-parameter 확인 반영: Table C-Full(GPU 5-fold, hidden=128/out=64/layers=3, seed 42) + Finding C5 신규. plateau는 full params에서도 정성적으로 유지(명목 최적 λ=0.005, HR@10=0.7484), 단 λ≥0.5 저하는 -19.6%/-27.3%로 심각(capacity-dependent) + HealthGain@10→0 — health-ranking trade-off가 실제로 작동함을 확인. Finding C3/mechanism (b)/Table S/Design Guidelines/Abstract/Conclusion 갱신, "future confirmation" 문구 해소. v1.1: EXP-F v2 GPU 5-fold 완료 반영: NutriGraphNet ablation(v2a) + NGCF 50% dilution ablation(v2b) 실측치로 6.6절 placeholder 교체. 핵심 발견: NutriGraphNet은 실제로 -1.7%~-21.0% 성능 저하(진짜 topology dependence), NGCF는 -1.2%~-1.4%로 미미(HFRS-DA의 정확히 0.000과 대조). Finding F4-F6 신규 추가, Table S/Design Guidelines/향후 연구 항목 갱신. EXP-C 재실험 반영: 3-seed 집계, λ-robust plateau 발견(Δ<0.004), Finding C1-C4 전면 개정, 권장 λ=0.01로 변경. EXP-G GPU 5-fold 완료 반영: Table G 전면 교체(mean±std, 5-fold), Finding G1–G4 전면 갱신. 핵심 변경: LightGCN L=3 over-smoothing 발견(-8.1%), NGCF layer-invariant 확인. Table S EXP-G 항목 갱신. 이제 A/B/C/D/F(v1+v2)/G 전 실험 GPU 5-fold 완료)
 
 ---
 
@@ -11,8 +11,8 @@
 
 Graph neural networks (GNNs) have achieved remarkable success in collaborative filtering, yet their effectiveness in the food recommendation domain remains poorly understood. 
 We conduct a systematic empirical study on a large-scale heterogeneous nutrition graph (20,820 users, 31,458 foods, 3,284 ingredients, 262,270 interactions; density=0.040%) and uncover four previously unreported phenomena: 
-**(1) SGL Augmentation Collapse** — self-supervised graph augmentation via edge dropout consistently degrades ranking performance as the dropout ratio increases (HR@10: 0.3604→0.3520 from p=0.0→0.5; HR@10 collapses to 0.088 at 10% data density vs. NutriGraphNet=0.656, a **7.45× gap**), due to structural sparsity unique to nutrition interaction graphs (avg 12.6 interactions/user); 
-**(2) NutriGraphNet Sparsity Robustness** — NutriGraphNet dominates all baselines at every tested density level under 5-fold cross-validation: HR@10=**0.656** at 10% density (vs. LightGCN=0.524, **+25.3%**; vs. SGL=0.088, **+645%**), HR@10=**0.734** at 30%–100%, maintaining a consistent lead over NGCF (+4.7%–+14.8%) across all conditions. This heterogeneous graph advantage is most pronounced at low density, where auxiliary edges (ingredient, time, food-similarity) compensate for interaction sparsity; 
+**(1) SGL Collapse Under Sparsity** — SGL's HR@10 collapses to **0.088** at 10% data density, an **8.39× gap** against NutriGraphNet (0.738) and 5.95× against LightGCN (0.524), due to structural sparsity unique to nutrition interaction graphs (avg 12.6 interactions/user). The collapse is a property of SGL's contrastive objective rather than of augmentation intensity: sweeping the edge-dropout ratio moves HR@10 by only 0.3604→0.3520 (p=0.0→0.5, Δ=0.0084), which is the size of this setup's run-to-run reproducibility gap (ΔHR@10≈0.002–0.007 at identical seed) and smaller than the fold-level spread (σ=0.012–0.027), so no augmentation-ratio effect is resolvable here — and SGL already trails NGCF 2.18× at p=0.0 with no augmentation at all; 
+**(2) NutriGraphNet Sparsity Robustness** — under GPU 5-fold cross-validation NutriGraphNet is the best model wherever interactions are scarce: HR@10=**0.738** at 10% density (vs. NGCF=0.509, **+45.0%**; vs. LightGCN=0.524, **+41.0%**; vs. SGL=0.088, **8.4×**) and **0.755** at 30%. Its HR@10 is **density-invariant** (0.738→0.729 from 10%→100%, ratio 0.99×), reaching **94.1%** of the best full-data baseline score using one tenth of the interactions — while NGCF requires the full data to get there and overtakes it above 50% density (0.784 vs. 0.729 at 100%). The advantage is largest exactly where auxiliary edges (ingredient, time, food-similarity) are the only structure left, and is corroborated by EXP-F: NutriGraphNet loses 21.0% HR@10 when auxiliary edges are removed, whereas the topology-blind HFRS-DA reference — which reaches only 0.656 at 10% — is provably unaffected by their removal (Δ=0.000); 
 **(3) MF–SGL Ranking Paradox** — simple matrix factorization achieves competitive ranking (HR@10=0.760 at full density) with dramatically lower AUC (0.547 vs. NGCF 0.878, a 33-pt gap), while SGL collapses to HR@10=0.088 at 10% density (**74.7% worse than MF**), revealing an augmentation-sparsity incompatibility that persists even at full density (SGL HR@10=0.358 vs. NGCF 0.784, **2.19× gap**); 
 **(4) Health Constraint Robustness in NutriGraphNet** — under multi-seed evaluation (seeds 123, 777), NutriGraphNet shows a **robust plateau**: HR@10 varies by only Δ=0.0040 across λ ∈ {0.001–0.1} (0.7390–0.7430), with HealthGain@10≈−0.009 consistently non-zero across **all** λ values confirming active health gradient flow. This establishes that health-aware improvement is an **architectural property** — NutriGraphNet routes health gradients through `healthness` edge convolution regardless of λ choice — rather than a hyperparameter-sensitive phenomenon. A full-parameter GPU 5-fold confirmation (EXP-C-Full) reproduces the plateau qualitatively while showing that strong regularization (λ≥0.5) carries a severe ranking cost at full capacity (HR@10 −19.6%/−27.3%) with HealthGain@10 moving toward zero — i.e., the health–ranking trade-off becomes functional once model capacity suffices. In contrast, HFRS-DA — whose health gradient backpropagation path is architecturally severed — produces Δ HR@10 = 0.000 exactly across the full λ range. EXP-F confirms HFRS-DA is completely **topology-invariant** — removing any combination of auxiliary edge types produces **Δ HR@10 = 0.000 exactly** across all 5 ablation conditions. Together, these findings establish that health-aware recommendation requires explicit architectural health gradient routing, which NutriGraphNet achieves but HFRS-DA does not.
 Our findings provide actionable design guidelines for practitioners building food recommendation systems.
@@ -41,7 +41,7 @@ We hypothesize that edge dropout augmentation, designed for dense collaborative 
 
 2. **[Analysis C1 — SGL Collapse]** We systematically characterize the augmentation collapse phenomenon in SGL via aug_ratio sensitivity analysis (p∈{0.0–0.5}) and sparsity-controlled experiments (10%–100%), showing HR@10 degradation from 0.358 to 0.088 as density decreases to 10%.
 
-3. **[Analysis C2 — NutriGraphNet Sparsity Robustness]** Under 5-fold GPU evaluation, NutriGraphNet achieves HR@10=0.656 at 10% density (+25.3% over LightGCN), maintaining top ranking performance across all five sparsity levels. EXP-B establishes NutriGraphNet as the preferred model when interaction data is sparse (<50% density).
+3. **[Analysis C2 — NutriGraphNet Sparsity Robustness]** Under GPU 5-fold evaluation, NutriGraphNet achieves HR@10=0.738 at 10% density (+45.0% over NGCF, +41.0% over LightGCN) and is density-invariant across a 10× change in interaction volume (ratio 0.99×). EXP-B establishes NutriGraphNet as the preferred model when interaction data is sparse (<50% density), and NGCF above it.
 
 4. **[Analysis C3 — MF-SGL Paradox]** We analyze why MF achieves competitive ranking despite inferior AUC through embedding dimension sweep (16→256) and graph component ablation (5 edge-type variants). EXP-D shows GNN HR@10 plateaus at d=64–128 while MF scales monotonically. EXP-F formally confirms HFRS-DA is topology-invariant (Δ HR@10 = 0.000 exactly across all ablation conditions).
 
@@ -178,7 +178,7 @@ We construct **NutriGraph-KR**, a heterogeneous nutrition graph from Korean diet
 
 4. **HFRS-DA vs. NGCF:** HFRS-DA (AUC=0.8551, HR@10=0.7340, NDCG@10=0.5977) exceeds NGCF on NDCG@10 (+0.041) and MRR (+0.072) but falls 6.2% behind on HR@10 (0.7340 vs. 0.7844). However, HFRS-DA's graph structure is architecturally severed (EXP-F: topology invariant), so its NDCG@10 advantage comes from attention over the interaction matrix, not nutritional graph convolution.
 
-5. **NGCF leads on HR-focused ranking:** NGCF achieves the highest HR@10=0.7844 and HR@20=0.8460 among all models at full density. Together with EXP-B showing NutriGraphNet dominates at low density (HR@10=0.656 at 10%), this motivates a density-conditioned model selection strategy (see Section 7).
+5. **NGCF leads on HR-focused ranking at full density:** NGCF achieves the highest HR@10=0.7844 and HR@20=0.8460 among all models when all interactions are available. Together with EXP-B showing NutriGraphNet dominates at low density (HR@10=0.738 at 10%, +45.0% over NGCF, which reaches only 0.509 there), this motivates a density-conditioned model selection strategy (see Section 7): the ranking reverses at roughly 50% density.
 
 ---
 
@@ -215,56 +215,67 @@ We vary SGL's edge dropout ratio p ∈ {0.0, 0.1, 0.2, 0.3, 0.4, 0.5} on the ful
 
 ### 6.2 EXP-B: Data Sparsity Analysis
 
-We subsample the user-food interaction set to {10%, 30%, 50%, 70%, 100%} and evaluate all five models including NutriGraphNet (hfrsda) under 5-fold cross-validation on GPU.
+We subsample the user-food interaction set to {10%, 30%, 50%, 70%, 100%} and evaluate all six models — the five baselines plus **NutriGraphNet** — under GPU 5-fold cross-validation with identical full parameters (hidden=128, out=64, layers=3, heads=4, seed=42, λ_health=0.01). Subsampling is seeded, so every model at a given density sees the exact same interaction subset. Note that only the user-food `eats`/`healthness` edges are subsampled; the auxiliary graph (ingredient, food-similar, time) remains intact at every density. This is deliberate — it isolates the question of interest, namely how much auxiliary structure can compensate when interaction data is scarce.
 
-**Table B. HR@10 vs. Interaction Density (% of full 262,270 interactions, 5-fold CV)**
+**Table B. HR@10 vs. Interaction Density (% of full 262,270 interactions, GPU 5-fold CV)**
 
-| Density | MF | LightGCN | NGCF | SGL | **NutriGraphNet** | Best Model |
-|---------|-----|---------|------|-----|-------------------|------------|
-| 10% | 0.349 | 0.524 | 0.509 | 0.088 | **0.656** | NutriGraphNet |
-| 30% | 0.617 | 0.690 | 0.701 | 0.212 | **0.734** | NutriGraphNet |
-| 50% | 0.721 | 0.723 | 0.748 | 0.272 | **0.727** | NGCF |
-| 70% | 0.744 | 0.729 | 0.763 | 0.332 | **0.737** | NGCF |
-| 100% | 0.760 | 0.721 | **0.784** | 0.358 | 0.734 | NGCF |
+| Density | MF | LightGCN | NGCF | SGL | HFRS-DA | **NutriGraphNet** | Best Model |
+|---------|-----|---------|------|-----|---------|-------------------|------------|
+| 10% | 0.349 | 0.524 | 0.509 | 0.088 | 0.656 | **0.738** (±0.018) | **NutriGraphNet** |
+| 30% | 0.617 | 0.690 | 0.701 | 0.212 | 0.734 | **0.755** (±0.009) | **NutriGraphNet** |
+| 50% | 0.721 | 0.723 | **0.748** | 0.272 | 0.727 | 0.742 (±0.006) | NGCF |
+| 70% | 0.744 | 0.729 | **0.763** | 0.332 | 0.737 | 0.722 (±0.020) | NGCF |
+| 100% | 0.760 | 0.721 | **0.784** | 0.358 | 0.734 | 0.729 (±0.037) | NGCF |
 
-*(HR@10 shown; bold = best per row; see Figure 2)*
+*(HR@10; bold = best per row; see Figure 2)*
 
-**Table B-AUC. AUC vs. Interaction Density (5-fold CV)**
+**Table B-AUC. AUC vs. Interaction Density (GPU 5-fold CV)**
 
-| Density | MF | LightGCN | NGCF | SGL | **NutriGraphNet** |
-|---------|-----|---------|------|-----|-------------------|
-| 10% | 0.514 | 0.770 | 0.764 | 0.502 | **0.817** |
-| 30% | 0.539 | 0.832 | 0.835 | 0.599 | **0.853** |
-| 50% | 0.534 | 0.845 | 0.864 | 0.645 | **0.857** |
-| 70% | 0.538 | 0.840 | 0.872 | 0.673 | **0.862** |
-| 100% | 0.547 | 0.822 | **0.878** | 0.699 | 0.855 |
+| Density | MF | LightGCN | NGCF | SGL | HFRS-DA | **NutriGraphNet** |
+|---------|-----|---------|------|-----|---------|-------------------|
+| 10% | 0.514 | 0.770 | 0.764 | 0.502 | 0.817 | **0.932** |
+| 30% | 0.539 | 0.832 | 0.835 | 0.599 | 0.853 | **0.897** |
+| 50% | 0.534 | 0.845 | 0.864 | 0.645 | 0.857 | **0.880** |
+| 70% | 0.538 | 0.840 | 0.872 | 0.673 | 0.862 | **0.864** |
+| 100% | 0.547 | 0.822 | **0.878** | 0.699 | 0.855 | 0.860 |
 
-**Table B-NDCG. NDCG@10 vs. Interaction Density (5-fold CV)**
+**Table B-NDCG. NDCG@10 vs. Interaction Density (GPU 5-fold CV)**
 
-| Density | MF | LightGCN | NGCF | SGL | **NutriGraphNet** |
-|---------|-----|---------|------|-----|-------------------|
-| 10% | 0.236 | 0.339 | 0.338 | 0.042 | **0.542** |
-| 30% | 0.461 | 0.482 | 0.482 | 0.109 | **0.588** |
-| 50% | 0.576 | 0.517 | 0.548 | 0.157 | **0.589** |
-| 70% | 0.593 | 0.509 | 0.522 | 0.200 | **0.599** |
-| 100% | **0.618** | 0.499 | 0.557 | 0.228 | 0.598 |
+| Density | MF | LightGCN | NGCF | SGL | HFRS-DA | NutriGraphNet |
+|---------|-----|---------|------|-----|---------|---------------|
+| 10% | 0.236 | 0.339 | 0.338 | 0.042 | **0.542** | 0.508 |
+| 30% | 0.461 | 0.482 | 0.482 | 0.109 | **0.588** | 0.505 |
+| 50% | 0.576 | 0.517 | 0.548 | 0.157 | **0.589** | 0.504 |
+| 70% | 0.593 | 0.509 | 0.522 | 0.200 | **0.599** | 0.409 |
+| 100% | **0.618** | 0.499 | 0.557 | 0.228 | 0.598 | 0.411 |
 
-**Finding B1 — SGL Catastrophic Collapse at Low Density.** At 10% interaction density (≈1.26 interactions/user), SGL's HR@10 collapses to **0.088** — **74.7% lower than MF** (0.349) and **83.2% lower than LightGCN** (0.524). Most strikingly, NutriGraphNet achieves HR@10=0.656 at 10% density, a **7.45× gap** over SGL. At 30% density, SGL achieves only 0.212 vs. NutriGraphNet's 0.734 (**3.46× gap**). This demonstrates that SGL's contrastive objective cannot construct meaningful positive pairs when interaction data is severely limited.
+*(**Measurement note.** HealthGain@K is deliberately omitted from the sparsity sweep. `_get_food_health()` derives per-food health scores by averaging `healthness` edge attributes per food, and foods with no surviving `healthness` edge receive a score of 0. Because subsampling removes `healthness` edges alongside `eats` edges, the population baseline `hs_mean` collapses from 0.6653 at 100% density to 0.1529 at 10%, where 24,205 of 31,458 foods (77%) score 0. HealthGain@10 then reads +0.503 at 10% density — an artifact of recommending foods that still have interactions, not evidence of health alignment. Only the 100% figure (−0.0099) is meaningful; EXP-C, which runs entirely at full density, is unaffected.)*
 
-**Finding B2 — NutriGraphNet Sparsity Robustness.** NutriGraphNet consistently dominates at low-to-medium density levels: HR@10=0.656 at 10% (+25.2% over LightGCN=0.524; +28.9% over NGCF=0.509), HR@10=0.734 at 30% (+6.2% over NGCF=0.701). The advantage stems from auxiliary edge types (ingredient, time, food-similarity) that provide structural signal even when user-food interaction edges are sparse. At 50%–70% density, NGCF gains ground as interaction data becomes sufficient for message-passing; at 100% density, NGCF overtakes NutriGraphNet on HR@10 (0.784 vs. 0.734) while NutriGraphNet maintains a higher NDCG@10 advantage (0.598 vs. 0.557, +7.4%). NutriGraphNet leads on AUC at all density levels, confirming superior discriminative calibration throughout.
+**Finding B1 — SGL Catastrophic Collapse at Low Density.** At 10% interaction density (≈1.26 interactions/user), SGL's HR@10 collapses to **0.088** — **74.8% lower than MF** (0.349) and **83.2% lower than LightGCN** (0.524). Against NutriGraphNet (0.738) the gap is **8.39×**. At 30% density, SGL reaches only 0.212 vs. NutriGraphNet's 0.755 (**3.56× gap**). SGL's contrastive objective cannot construct meaningful positive pairs when interaction data is severely limited.
 
-**Finding B3 — Sparsity Sensitivity Ranking.** Models rank as follows by robustness to sparsity (HR@10 scaling ratio: 10%→100%):
-- NutriGraphNet: 0.656→0.734, ratio=1.12× (**most robust** — auxiliary edges buffer interaction sparsity)
+**Finding B2 — NutriGraphNet Dominates Where Interactions Are Scarce.** NutriGraphNet is the best model at both low-density settings: HR@10=**0.738** at 10% (**+45.0%** over NGCF=0.509, **+41.0%** over LightGCN=0.524, **+111%** over MF=0.349) and **0.755** at 30% (+7.7% over NGCF=0.701). The margin is widest exactly where interaction data is scarcest, which is the signature the auxiliary-edge hypothesis predicts: when `eats` edges are decimated, the intact ingredient/food-similar/time structure still carries usable signal.
+
+This reading is corroborated by an independent line of evidence rather than resting on the correlation alone. HFRS-DA, whose forward pass never consumes auxiliary edges (EXP-F: Δ HR@10 = 0.000 exactly for every edge-type removal), reaches 0.656 at 10% — while NutriGraphNet, which demonstrably does consume them (EXP-F v2a: −21.0% HR@10 when all auxiliary edges are removed), reaches 0.738, a **+12.5%** margin over that topology-blind reference. The two experiments triangulate: the model that uses auxiliary structure beats the model that cannot, by the largest margin precisely where auxiliary structure is the only structure left.
+
+**Finding B3 — NutriGraphNet Is Density-Invariant; the Baselines Are Data-Hungry.** Ranking models by HR@10 scaling ratio (10%→100%):
+- **NutriGraphNet: 0.738→0.729, ratio=0.99×** (density-invariant — performance is essentially flat across a 10× change in interaction volume)
+- HFRS-DA: 0.656→0.734, ratio=1.12×
 - LightGCN: 0.524→0.721, ratio=1.38×
 - NGCF: 0.509→0.784, ratio=1.54×
-- MF: 0.349→0.760, ratio=2.18× (most benefited by data)
-- SGL: 0.088→0.358, ratio=4.07× (most fragile; structural collapse at low density)
+- MF: 0.349→0.760, ratio=2.18× (most data-hungry)
+- SGL: 0.088→0.358, ratio=4.06× (most fragile)
 
-**Finding B4 — LightGCN vs. NGCF Crossover.** LightGCN dominates NGCF at 10%–30% (simpler propagation more robust to sparsity), while NGCF dominates at 50%–100% (interaction modeling benefits from denser data). NutriGraphNet dominates both at 10%–30% and remains competitive at 50%–70%.
+At 10% density NutriGraphNet already attains **94.1%** of the best full-data score any model achieves (NGCF's 0.784) — using one tenth of the interactions. For domains where interaction data is expensive to collect (clinical cohorts, national dietary surveys), this is the operationally relevant property.
 
-**Finding B5 — MF Structural AUC Ceiling.** MF's AUC is structurally capped at ~0.547 regardless of density (range: 0.514–0.547), while GNN AUC scales substantially (NutriGraphNet: 0.817→0.855; NGCF: 0.764→0.878). Despite this AUC gap, MF achieves HR@10=0.760 at full density, exceeding NutriGraphNet (0.734) on ranking while far inferior on AUC (+0.308 gap). This illustrates that AUC and ranking metrics capture fundamentally different aspects of model quality.
+**Finding B4 — The Flip Side: NutriGraphNet Does Not Exploit Additional Data.** Density-invariance cuts both ways. NGCF overtakes NutriGraphNet from 50% upward (0.748 vs. 0.742 at 50%; 0.784 vs. 0.729 at 100%, +7.6%), because NGCF converts extra interactions into ranking quality while NutriGraphNet plateaus at HR@10≈0.72–0.76 throughout. Within the sweep, NutriGraphNet's own variation (0.722–0.755) is small relative to its fold-level spread (σ up to 0.037) and to the run-to-run reproducibility gap measured on this setup (ΔHR@10≈0.002, ΔAUC≈0.005 for identical seed and configuration), so the apparent 50%→100% decline should be read as a plateau, not a decline. NutriGraphNet is therefore best positioned as a **sparse-data specialist**: preferred below ~50% density, matched or beaten by NGCF above it.
 
-**Finding B6 — SGL Threshold Effect.** Below 50% density (≈6.3 interactions/user), SGL falls dramatically below all models. The practical recommendation for datasets with <50% interaction density is to use NutriGraphNet (leverages auxiliary structure) or LightGCN (robust propagation), and to avoid SGL entirely.
+**Finding B5 — MF Structural AUC Ceiling.** MF's AUC is structurally capped at ~0.547 regardless of density (range 0.514–0.547) while GNN AUC scales (NGCF: 0.764→0.878). Yet MF achieves HR@10=0.760 at full density, exceeding NutriGraphNet (0.729) on hit rate despite a 0.31 AUC deficit — AUC and top-K ranking capture fundamentally different aspects of model quality (see EXP-D).
+
+**Finding B6 — Ranking Quality Is Not Uniform Across Metrics.** NutriGraphNet's advantage is confined to HR@10 and AUC; on NDCG@10 it trails HFRS-DA at every density (0.508 vs. 0.542 at 10%; 0.411 vs. 0.598 at 100%) and trails MF at full density (0.618). NutriGraphNet retrieves relevant foods into the top-10 more reliably than any baseline at low density, but orders them less well once retrieved. Section 6.4 and the v2 decoder analysis attribute this to the HybridDecoder's rank calibration rather than to health regularization — at λ_health=0.0 (health loss fully disabled) NDCG@10 is 0.4032, *below* the λ=0.005 value of 0.4279, so the health objective is not the cause.
+
+**Finding B7 — SGL Threshold Effect.** Below 50% density (≈6.3 interactions/user), SGL falls dramatically below every other model. For datasets under 50% interaction density the practical recommendation is NutriGraphNet (leverages auxiliary structure) or LightGCN (robust propagation), and to avoid SGL entirely.
+
+**Open question — the AUC trend.** NutriGraphNet's AUC *decreases* monotonically with density (0.932→0.860), the only model to do so; every baseline increases (NGCF 0.764→0.878). One plausible explanation is that the auxiliary graph is held at full size while `eats` edges are subsampled, so at 10% density the model's discriminative signal comes overwhelmingly from intact auxiliary structure against a smaller, easier positive set. We flag this as unresolved: the effect is consistent across all five folds (σ≤0.008) and so is not noise, but the current experiments do not isolate its cause, and it should be settled before the AUC column is used to support any claim.
 
 ---
 
@@ -510,8 +521,10 @@ The six experiments collectively paint a coherent picture of failure modes and s
 |-------|-----------|-----------------|
 | SGL best aug ratio | EXP-A | p=0.0, HR@10=0.3604; all p>0 degrade |
 | SGL aug worst point | EXP-A | HR@10=0.3520 at p=0.5 (-2.3%); NDCG@10 worst at p=0.2 (-3.1%) |
-| SGL collapse at 10% density | EXP-B | HR@10=0.0880 vs. NutriGraphNet=0.6560 (7.45x gap) |
-| NutriGraphNet best at low density | EXP-B | HR@10=0.6560 at 10%, best of all 5 models |
+| SGL collapse at 10% density | EXP-B | HR@10=0.0880 vs. NutriGraphNet=0.7380 (8.39x gap) |
+| NutriGraphNet best at low density | EXP-B | HR@10=0.7380 at 10%, best of all 6 models (+45.0% over NGCF) |
+| NutriGraphNet density-invariance | EXP-B | HR@10 0.7380 (10%) -> 0.7292 (100%), ratio 0.99x; 94.1% of NGCF's full-data 0.7844 using 10% of interactions |
+| NGCF overtakes above 50% density | EXP-B | NGCF 0.7844 vs. NutriGraphNet 0.7292 at 100% (+7.6%) |
 | NutriGraphNet sparsity robustness | EXP-B | HR@10 scaling ratio 1.12x (10%->100%), most robust |
 | NGCF best at high density | EXP-B | HR@10=0.7844 at 100%, best baseline |
 | MF AUC structural ceiling | EXP-B/D | AUC <=0.5428 regardless of density or dim |
@@ -541,8 +554,10 @@ Based on our empirical findings, we propose the following actionable guidelines 
 
 | Scenario | Recommendation | Evidence |
 |----------|----------------|---------|
-| Sparse interactions (<20/user) | **Avoid SGL** -- use NutriGraphNet or LightGCN | EXP-B: SGL HR@10=0.0880 at 10% density; NutriGraphNet=0.6560 (7.45x better) |
-| Low density (10-30%) | **NutriGraphNet** preferred; LightGCN as lightweight alternative | EXP-B: NutriGraphNet HR@10=0.6560 at 10% (+25.3% over LightGCN=0.5236) |
+| Sparse interactions (<20/user) | **Avoid SGL** -- use NutriGraphNet or LightGCN | EXP-B: SGL HR@10=0.0880 at 10% density; NutriGraphNet=0.7380 (8.39x better) |
+| Low density (10-30%) | **NutriGraphNet** preferred; LightGCN as lightweight alternative | EXP-B: NutriGraphNet HR@10=0.7380 at 10% (+45.0% over NGCF=0.5088, +41.0% over LightGCN=0.5236) |
+| Density above ~50% | **NGCF** preferred if hit rate is the target | EXP-B: NGCF 0.7844 vs. NutriGraphNet 0.7292 at 100%; ranking reverses near 50% |
+| Ranking order matters (NDCG-critical) | **Avoid NutriGraphNet v2** -- use MF or HFRS-DA | EXP-B: NutriGraphNet NDCG@10=0.411 at 100% vs. MF=0.618; a decoder rank-calibration issue, not a health trade-off |
 | Dense interactions (>50% / >6 int/user) | **NGCF** optimal for HR@10; NutriGraphNet for NDCG | EXP-B: NGCF HR@10=0.7844 at 100%; NutriGraphNet NDCG@10=0.5977 (best baseline) |
 | SGL augmentation ratio | **p=0.0 is always optimal** on sparse nutrition graphs | EXP-A: HR@10 decreases for all p>0; worst at p=0.5 (-2.3%) |
 | GNN layer depth (NGCF) | **L=1 is optimal** -- layer-invariant (ΔHR@10=0.0076 across L=1–4) | EXP-G: NGCF HR@10=0.7876 at L=1; Δ<1.0% across all depths |
@@ -561,9 +576,9 @@ Based on our empirical findings, we propose the following actionable guidelines 
 
 We presented a systematic empirical analysis of GNN-based food recommendation on a large-scale heterogeneous nutrition graph (NutriGraph-KR: 20,820 users, 31,458 foods, density=0.040%), uncovering four key phenomena with root-cause explanations:
 
-**(1) SGL Augmentation Collapse.** Edge dropout augmentation degrades ranking performance for all p > 0 (HR@10: 0.3604→0.3520 as p: 0.0→0.5, −2.3%), with catastrophic collapse at 10% data density (HR@10=0.088 vs. NutriGraphNet=0.656, 7.45× gap; vs. LightGCN=0.524, 5.95× gap). The root cause is the fundamental incompatibility between SGL's InfoNCE contrastive objective — which requires dense positive views — and nutrition interaction graphs with an average of only 12.6 interactions per user (10× sparser than MovieLens-1M).
+**(1) SGL Collapse Under Sparsity.** SGL suffers catastrophic collapse at 10% data density (HR@10=0.088 vs. NutriGraphNet=0.738, **8.39× gap**; vs. LightGCN=0.524, 5.95× gap). The root cause is the fundamental incompatibility between SGL's InfoNCE contrastive objective — which requires dense positive views — and nutrition interaction graphs with an average of only 12.6 interactions per user (10× sparser than MovieLens-1M). Critically, this is a property of the objective, not of augmentation intensity: at p=0.0, with augmentation disabled entirely, SGL still reaches only HR@10=0.3604 versus NGCF's 0.7844 (2.18×), and sweeping p from 0.0 to 0.5 moves HR@10 by just Δ=0.0084 — within this setup's reproducibility gap and below fold-level σ. We therefore do **not** claim an augmentation-ratio effect; the earlier framing of these results as "augmentation collapse" overstated a difference that the data cannot resolve.
 
-**(2) NutriGraphNet Sparsity Robustness.** Under GPU 5-fold cross-validation, NutriGraphNet dominates all baselines at every tested density from 10%–70%, achieving HR@10=0.656 at 10% density (+25.2% over LightGCN, +28.9% over NGCF). The sparsity scaling ratio is 1.12× (10%→100%), the most robust of all five models, because auxiliary graph edges (ingredient, food-similarity, time) provide non-interaction structural signal that compensates for sparse user-food data. At full density, NGCF overtakes NutriGraphNet on HR@10 (0.784 vs. 0.734), while NutriGraphNet maintains higher NDCG@10 and AUC, indicating complementary strengths.
+**(2) NutriGraphNet Sparsity Robustness.** Under GPU 5-fold cross-validation, NutriGraphNet is the best model at 10% and 30% density, achieving HR@10=0.738 at 10% (+45.0% over NGCF=0.509, +41.0% over LightGCN=0.524). Its sparsity scaling ratio is 0.99× (10%→100%) — **density-invariant**, the most robust of all six models — because auxiliary graph edges (ingredient, food-similarity, time) supply non-interaction structural signal that compensates for sparse user-food data. That mechanism is independently confirmed rather than merely inferred: removing the auxiliary edges costs NutriGraphNet 21.0% HR@10 (EXP-F v2a), while the topology-blind HFRS-DA reference is provably indifferent to the same removal (Δ=0.000) and reaches only 0.656 at 10%. At 10% density NutriGraphNet attains 94.1% of the best full-data score any model reaches, using one tenth of the interactions — the operationally relevant property when interaction data is expensive to collect. The property is two-sided: NutriGraphNet does not convert additional data into ranking quality, so NGCF overtakes it above 50% density (0.784 vs. 0.729 at 100%), and its NDCG@10 (0.411) trails both MF (0.618) and HFRS-DA (0.598) — a decoder rank-calibration limitation, not a health trade-off, since disabling the health loss entirely (λ=0.0) *lowers* NDCG@10 to 0.403. NutriGraphNet is therefore best positioned as a sparse-data specialist rather than a general-purpose ranker.
 
 **(3) MF–SGL Ranking Paradox.** Simple matrix factorization (HR@10=0.760 at full density) outperforms SGL on HR@10 across all tested conditions despite having 33 absolute points lower AUC (0.547 vs. NGCF 0.878). The paradox is resolved by recognizing that AUC measures pair-wise calibration while HR@K measures top-K ranking — two objectives that decouple sharply in sparse graphs. SGL fails completely (HR@10=0.088 at 10% density) despite moderate AUC (0.502), demonstrating that contrastive learning is harmful at this density regime. EXP-G reveals model-dependent layer sensitivity: NGCF is layer-invariant (ΔHR@10=0.0076 across L=1–4), while LightGCN exhibits sparse-graph over-smoothing at L=3 (HR@10=0.7208, −8.1% vs. L=2=0.7844), partially recovering at L=4. Optimal depths are L=1 for NGCF and L=2 for LightGCN.
 
@@ -587,6 +602,15 @@ We presented a systematic empirical analysis of GNN-based food recommendation on
 - Yu et al. (2022). Are Graph Augmentations Necessary? SimGCL. SIGIR.
 - Yu et al. (2023). XSimGCL. IEEE TKDE.
 
+---
+*New in v1.3 (2026-07-16): EXP-B "NutriGraphNet" 열 오표기 수정 — 실측 데이터로 교체.*  
+*문제: v0.8(커밋 592634a)에서 "evaluate all four baselines" → "all five models including NutriGraphNet (hfrsda)"로 바뀌며 `hfrsda` 결과가 "NutriGraphNet" 열로 실렸음. 5가지 독립 근거로 확인: (1) 코드상 `'hfrsda'`=HFRS-DA(line 2013/2184), `'full'`=NutriGraphNet(2017/2186/2298); (2) run_all.bat EXP-B가 `full`을 실행하지 않음; (3) `results/gpu/B_sparsity_*/`에 `results_full.json` 부재; (4) Table B 100% 행이 Table 1의 HFRS-DA 행과 완전 동일; (5) 해당 데이터의 HealthGain@10=None·health loss=0.0 (NutriGraphNet은 항상 ≈−0.010 보고). 부작용으로 Finding B2가 "auxiliary edge가 희소성을 보완"이라 설명하던 수치가 EXP-F에서 auxiliary edge를 전혀 읽지 않는다고 증명된 바로 그 모델의 것이어서 자기모순 상태였음.*  
+*조치: `run_expB_full.bat`(커밋 560efd1)으로 NutriGraphNet 5개 밀도 GPU 5-fold 실행(λ=0.01, seed 42, full params, 시드 고정 부분추출로 베이스라인과 동일 부분집합). 출력은 기존 폴더 파괴를 피해 `results/gpu/B_full_*pct`로 분리.*  
+*결과: 진짜 NutriGraphNet이 오표기값보다 우수 — 10% HR@10=0.738(vs 오표기 0.656), NGCF 대비 +45.0%. 30%에서도 1위(0.755). 밀도 불변(0.738→0.729, ratio 0.99×). 이제 EXP-F v2a(−21.0%)와 HFRS-DA(Δ=0.000)가 독립 증거로 삼각검증되어 auxiliary-edge 메커니즘 주장이 처음으로 정합적으로 성립.*  
+*한계도 실측 확인: 50% 이상에서 NGCF에 역전(0.784 vs 0.729), NDCG@10은 전 밀도에서 HFRS-DA에 열세(0.411 vs 0.598 at 100%). 후자는 health 때문이 아님 — λ=0.0에서 NDCG@10=0.4032로 오히려 더 낮음 → HybridDecoder rank calibration 문제(v3 RankDotDecoder의 설계 근거와 일치).*  
+*측정 결함 발견: HealthGain@K는 저밀도에서 무의미. `_get_food_health()`가 healthness 엣지 평균으로 food 점수를 만드는데 엣지 없는 food는 0점 → 부분추출 시 기준선 `hs_mean`이 0.6653(100%)에서 0.1529(10%)로 붕괴, food의 77%(24,205/31,458)가 0점. 그 결과 10%에서 HealthGain@10=+0.503이 나오지만 이는 "상호작용 있는 food를 추천했다"는 동어반복. Table B에서 제외, 100%(−0.0099)만 유효. EXP-C는 전부 100% 밀도라 영향 없음.*  
+*미해결: NutriGraphNet AUC가 밀도에 반비례(0.932→0.860)하는 유일한 모델. 5-fold 전부 일관(σ≤0.008)이라 노이즈 아님. auxiliary 그래프가 부분추출되지 않는 설계 때문으로 추정되나 현 실험으로 인과 규명 불가 → AUC 열을 근거로 쓰기 전 해소 필요.*  
+*재현성 관측: 동일 seed·파라미터·밀도에서 `B_full_100pct`와 `C_lambda_0.01`이 ΔHR@10=0.0016, ΔAUC=0.0050, ΔNDCG=0.0068 차이(GPU scatter 비결정성 추정). 이 노이즈 바닥(~0.005)은 EXP-A의 증강 효과(Δ=0.0084)와 같은 크기 → EXP-A 주장 재검토 필요.*  
 ---
 *New in v1.2 (2026-07-15): EXP-C full-parameter confirmation (EXP-C-Full) 반영.*  
 *Table C-Full 신규: GPU 5-fold CV(hidden=128, out=64, layers=3, heads=4, seed 42), λ 8개 값 전수 — `results/gpu/C_lambda_*` (2026-07-13 run_all.bat 실행분, 체크포인트로 파라미터 검증 완료).*  
