@@ -69,10 +69,10 @@ echo Prior undertrained v3 (epochs=100, lr=3e-4, results/v3):
 echo    v3:  AUC=0.8142  HR@10=0.5908  NDCG@10=0.3361  MRR=0.2767
 echo.
 echo DECISION RULE:
-echo   NDCG@10 >= 0.55 and AUC >= 0.86  -> v3 becomes the paper's model.
+echo   NDCG@10 at or above 0.55 with AUC at or above 0.86 - v3 becomes the model.
 echo                                       EXP-B/C/D/F must then be rerun on v3.
-echo   NDCG@10 improves but stays < v2  -> v2 stays the model; report v3 as a
+echo   NDCG@10 improves but stays  below  v2   -  v2 stays the model; report v3 as a
 echo                                       negative architectural result.
-echo   No improvement over the 100-epoch run -> budget was not the cause;
+echo   No improvement over the 100-epoch run  -  budget was not the cause;
 echo                                       check the patience limitation above.
 pause

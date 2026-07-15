@@ -1206,6 +1206,7 @@ def run_kfold_v3(
     verbose: bool = True,
     val_ratio: float = 0.05,
     test_ratio: float = 0.10,
+    interaction_ratio: float = 1.0,
 ):
     """Run k-fold cross-validation for NutriGraphNet v3."""
     import pickle
@@ -1226,6 +1227,35 @@ def run_kfold_v3(
     print(f"  Users={data['user'].num_nodes}, "
           f"Foods={data['food'].num_nodes}, "
           f"Edges={data[('user','eats','food')].edge_index.shape[1]}")
+
+    # ── EXP-B: interaction sparsity subsampling ───────────────────────────────
+    # Ported verbatim from nutrigraphnet_v2.py so that a given (seed, ratio)
+    # draws the EXACT same interaction subset the v2 baselines saw -- otherwise
+    # the sparsity sweep is not comparable across model versions.
+    # Only user-food eats/healthness edges are subsampled; the auxiliary graph
+    # (ingredient, food-similar, time) is left intact, as in v2.
+    if interaction_ratio < 1.0:
+        ei_key  = ('user', 'eats', 'food')
+        rev_key = ('food', 'rev_eats', 'user')
+        h_key   = ('user', 'healthness', 'food')
+        rh_key  = ('food', 'rev_healthness', 'user')
+        n_orig = data[ei_key].edge_index.shape[1]
+        torch.manual_seed(seed)
+        keep = torch.randperm(n_orig)[:int(n_orig * interaction_ratio)]
+        keep_sorted = keep.sort().values
+        for k in (ei_key, rev_key, h_key, rh_key):
+            if k in data.edge_types:
+                data[k].edge_index = data[k].edge_index[:, keep_sorted]
+                if hasattr(data[k], 'edge_attr') and data[k].edge_attr is not None:
+                    data[k].edge_attr = data[k].edge_attr[keep_sorted]
+        print(f"  [sparsity] kept {len(keep_sorted):,}/{n_orig:,} interactions "
+              f"({interaction_ratio*100:.0f}%)")
+        # HealthGain@K is not meaningful below full density: per-food health
+        # scores are averaged from healthness edge_attr and foods left with no
+        # surviving edge score 0, collapsing the population baseline (0.6653 at
+        # 100% -> 0.1529 at 10%). Ignore HealthGain in sparsity-sweep outputs.
+        print("  [sparsity] NOTE: HealthGain@K is invalid at this density "
+              "(health-score baseline dilution) -- ignore it in these results.")
 
     feat_dims = _infer_feat_dims(data)
     print(f"  Feature dims: {feat_dims}")
@@ -1419,6 +1449,12 @@ if __name__ == '__main__':
     parser.add_argument('--batch_size', type=int, default=4096)
     parser.add_argument('--device', type=str, default='auto')
     parser.add_argument('--seed',   type=int, default=42)
+    parser.add_argument('--interaction_ratio', type=float, default=1.0,
+                        help='EXP-B: fraction of user-food interactions to keep '
+                             '(0~1). Seeded identically to nutrigraphnet_v2.py, '
+                             'so a given (seed, ratio) reproduces the same subset '
+                             'the v2 baselines used. HealthGain@K is invalid '
+                             'below 1.0 -- see the note in run_kfold_v3().')
     parser.add_argument('--quick',  action='store_true',
                         help='Quick test mode (CPU, lightweight params)')
     parser.add_argument('--quick_epochs', type=int, default=30)
@@ -1445,4 +1481,5 @@ if __name__ == '__main__':
             lambda_health=args.lambda_health,
             phase1_frac=args.phase1_frac,
             seed=args.seed,
+            interaction_ratio=args.interaction_ratio,
         )
