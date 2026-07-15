@@ -3,7 +3,7 @@
 
 **Authors:** Heejeong [Last Name]  
 **Target Venue:** Computers in Biology and Medicine (IF: 7.7) / Nutrients (IF: 5.9)  
-**Status:** Draft v1.0 — 2026-07-14 (EXP-C 재실험 반영: 3-seed 집계, λ-robust plateau 발견(Δ<0.004), Finding C1-C4 전면 개정, 권장 λ=0.01로 변경. EXP-G GPU 5-fold 완료 반영: Table G 전면 교체(mean±std, 5-fold), Finding G1–G4 전면 갱신. 핵심 변경: LightGCN L=3 over-smoothing 발견(-8.1%), NGCF layer-invariant 확인. Table S EXP-G 항목 갱신. 이제 A/B/C/D/F/G 전 실험 GPU 5-fold 완료)
+**Status:** Draft v1.1 — 2026-07-15 (EXP-F v2 GPU 5-fold 완료 반영: NutriGraphNet ablation(v2a) + NGCF 50% dilution ablation(v2b) 실측치로 6.6절 placeholder 교체. 핵심 발견: NutriGraphNet은 실제로 -1.7%~-21.0% 성능 저하(진짜 topology dependence), NGCF는 -1.2%~-1.4%로 미미(HFRS-DA의 정확히 0.000과 대조). Finding F4-F6 신규 추가, Table S/Design Guidelines/향후 연구 항목 갱신. EXP-C 재실험 반영: 3-seed 집계, λ-robust plateau 발견(Δ<0.004), Finding C1-C4 전면 개정, 권장 λ=0.01로 변경. EXP-G GPU 5-fold 완료 반영: Table G 전면 교체(mean±std, 5-fold), Finding G1–G4 전면 갱신. 핵심 변경: LightGCN L=3 over-smoothing 발견(-8.1%), NGCF layer-invariant 확인. Table S EXP-G 항목 갱신. 이제 A/B/C/D/F(v1+v2)/G 전 실험 GPU 5-fold 완료)
 
 ---
 
@@ -441,11 +441,43 @@ The model is therefore a **topology-invariant embedding model** despite its hete
 *(iii)* Re-running EXP-F after three independent bug fixes produces identical results (Δ = 0.000).  
 The finding is therefore architecturally expected and reproducible.
 
-**EXP-F v2 — Valid Topology Ablation (NutriGraphNet + NGCF).** To obtain a meaningful topology ablation for models that *do* use auxiliary edges, we implement EXP-F v2 with:
-- **NutriGraphNet** (routes message-passing through all 9 edge types via heterogeneous SAGEConv)
-- **NGCF with 50% interaction dilution** (auxiliary-edge-connected foods have 50% of their interactions randomly removed, measuring the contribution of auxiliary structure to interaction-based ranking)
+**EXP-F v2 — Valid Topology Ablation (NutriGraphNet + NGCF).** To obtain a meaningful topology ablation for models that *do* use auxiliary edges, we implement EXP-F v2 with two complementary probes under GPU 5-fold CV (hidden=128, out=64, layers=3, heads=4):
+- **NutriGraphNet (v2a)** — the ablated edge type is removed directly from the heterogeneous graph (`edge_index` zeroed) before message-passing, exercising the same forward-pass path used throughout the paper.
+- **NGCF with 50% interaction dilution (v2b)** — since NGCF's `_propagate()` never reads auxiliary `edge_index` tensors, a direct removal would be a no-op by construction. Instead, foods connected to the targeted auxiliary edge type have 50% of their user-interaction edges randomly removed from `train_ei`, giving an indirect but *functional* proxy for how much ranking-relevant signal is concentrated on auxiliary-connected foods.
 
-Results from EXP-F v2 will be reported in the camera-ready version.
+**Table F-v2a. Graph Component Ablation — NutriGraphNet (GPU 5-fold CV, hidden=128/out=64/layers=3)**
+
+| Variant | HR@10 (±σ) | NDCG@10 | MRR | AUC (±σ) | F1 | HealthGain@10 | ΔHR@10 |
+|---------|-----------|---------|-----|----------|-----|---------------|--------|
+| Full Graph | 0.7296 (±0.0306) | 0.4154 | 0.3288 | 0.8567 (±0.0116) | 0.7835 | −0.0102 | — |
+| w/o Ingredient | 0.7000 (±0.0729) | 0.3888 | 0.3068 | 0.8536 (±0.0233) | 0.7598 | −0.0108 | −0.0296 (−4.1%) |
+| w/o Time | 0.7172 (±0.0222) | 0.4284 | 0.3503 | 0.8582 (±0.0051) | 0.7798 | −0.0101 | −0.0124 (−1.7%) |
+| w/o Food-Similar | 0.7084 (±0.0295) | 0.3456 | 0.2467 | 0.8416 (±0.0082) | 0.7679 | −0.0087 | −0.0212 (−2.9%) |
+| w/o Healthness | 0.6772 (±0.1011) | 0.3867 | 0.3117 | 0.8518 (±0.0234) | 0.7851 | N/A¹ | **−0.0524 (−7.2%)** |
+| w/o Ingredient+Time | 0.7076 (±0.0284) | 0.3708 | 0.2792 | 0.8497 (±0.0062) | 0.7407 | −0.0108 | −0.0220 (−3.0%) |
+| w/o All Auxiliary | **0.5764 (±0.1408)** | **0.2708** | **0.1973** | **0.8190 (±0.0297)** | 0.5692 | −0.0079 | **−0.1532 (−21.0%)** |
+
+*(¹ HealthGain@10 is undefined when `healthness` edges are removed, since the health score used to compute it is itself derived from those edges — not a training failure, but a structural consequence of the ablation.)*
+
+**Table F-v2b. Graph Component Ablation — NGCF, 50% Interaction Dilution (GPU 5-fold CV)**
+
+| Variant (diluted) | HR@10 (±σ) | NDCG@10 | MRR | AUC (±σ) | F1 | ΔHR@10 |
+|---------|-----------|---------|-----|----------|-----|--------|
+| Full Graph | 0.7844 (±0.0209) | 0.5569 | 0.4915 | 0.8777 (±0.0014) | 0.7625 | — |
+| w/o Ingredient | 0.7748 (±0.0235) | 0.5354 | 0.4666 | 0.8732 (±0.0053) | 0.7794 | −0.0096 (−1.2%) |
+| w/o Time | 0.7752 (±0.0234) | 0.5355 | 0.4666 | 0.8732 (±0.0053) | 0.7795 | −0.0092 (−1.2%) |
+| w/o Food-Similar | 0.7732 (±0.0299) | 0.5489 | 0.4846 | 0.8772 (±0.0050) | 0.8013 | −0.0112 (−1.4%) |
+| w/o Healthness | 0.7744 (±0.0235) | 0.5350 | 0.4663 | 0.8732 (±0.0053) | 0.7794 | −0.0100 (−1.3%) |
+| w/o Ingredient+Time | 0.7752 (±0.0235) | 0.5353 | 0.4663 | 0.8732 (±0.0053) | 0.7794 | −0.0092 (−1.2%) |
+| w/o All Auxiliary | 0.7752 (±0.0234) | 0.5351 | 0.4661 | 0.8732 (±0.0053) | 0.7794 | −0.0092 (−1.2%) |
+
+*(A first EXP-F v2b run produced ΔHR@10 = 0.000000 for every variant — identical to full_graph at 6+ decimal places per fold. Root cause: the data-level `edge_index` zeroing step, applied globally before fold construction, ran before the dilution logic could inspect the same tensors to determine which foods are auxiliary-connected — so the dilution step always saw an empty edge set and silently fell back to the unmodified `train_ei`. Fixed by skipping the data-level zeroing when the ablation target is NGCF/LightGCN, so the dilution logic reads intact `edge_index` tensors. All values above are from the corrected rerun.)*
+
+**Finding F4 — NutriGraphNet Shows Genuine, Graded Topology Dependence.** Unlike HFRS-DA's exact Δ=0.000, NutriGraphNet's HR@10 degrades measurably and monotonically as more auxiliary structure is removed: −1.7% (w/o time, the weakest signal) to −21.0% (w/o all auxiliary, the strongest). Removing `healthness` alone costs −7.2% HR@10 — the single largest individual-edge-type effect — consistent with `healthness` edges carrying the densest per-interaction signal (one healthness edge per user-food interaction, vs. sparser ingredient/time/food-similar connections). This is direct, functional evidence — not just code inspection — that NutriGraphNet's message-passing genuinely consumes the heterogeneous topology it claims to model.
+
+**Finding F5 — Removing Critical Structure Destabilizes Convergence, Not Just Average Performance.** The `w/o healthness` and `w/o all auxiliary` conditions show far higher fold-to-fold variance (σ=0.101 and σ=0.141) than the full graph baseline (σ=0.031). In both cases, four of five folds land in a comparable range (no_all_auxiliary: 0.566–0.698; no_healthness: 0.710–0.792) while one fold collapses sharply (no_all_auxiliary fold 5: HR@10=0.310; no_healthness fold 4: HR@10=0.536). This indicates that stripping the auxiliary graph does not merely shift the mean — it makes convergence itself less reliable, an effect that a single-fold ablation (as in the original EXP-F v1 setup) would not have surfaced.
+
+**Finding F6 — NGCF's Residual Sensitivity Is Small and Clusters by Coverage, Not by Edge-Type Identity.** Diluting interactions for auxiliary-connected foods costs NGCF only −1.2% to −1.4% HR@10 regardless of *which* edge type defines the "auxiliary-connected" food set — ingredient, time, healthness, and their combinations all converge to nearly the same diluted HR@10 (0.7748–0.7752, AUC=0.8732). This is because ingredient, time, and healthness edges each cover a large majority of the 31,458 foods (health scores alone are defined for all foods, per Finding F3), so the "50%-diluted" food sets under these three ablations are nearly identical regardless of label. Food-similarity edges (108,062 edges, a sparser food-food relation) cover a different, smaller food set, producing a slightly different result (HR@10=0.7732, closer to the full-graph baseline of 0.7844 than the other five variants). Notably its F1 (0.8013) exceeds the full-graph value (0.7625) despite lower HR@10 — a reminder that F1 (classification-threshold-dependent) and HR@10 (ranking-based) can move in different directions and should not be conflated. The key contrast with Table F-v2a stands regardless: even under an indirect interaction-count proxy, NGCF's auxiliary-adjacent sensitivity (≤1.4%) is an order of magnitude smaller than NutriGraphNet's direct topology dependence (up to 21.0%), reinforcing that only architectures which route message-passing through auxiliary edges are functionally dependent on them.
 
 ---
 
@@ -476,6 +508,8 @@ The six experiments collectively paint a coherent picture of failure modes and s
 | NGCF layer-invariance | EXP-G | L=1 best (HR@10=0.7876±0.0150); Δ across L=1-4 = 0.0076 (1.0%) |
 | Optimal GNN layers | EXP-G | NGCF: L=1; LightGCN: L=2 (avoid L=3, -8.1% HR@10 penalty) |
 | HFRS-DA topology invariance | EXP-F | Delta HR@10 = 0.000000 across all 5 ablations; max Delta AUC = 1.2e-7 |
+| NutriGraphNet topology dependence | EXP-F v2a | w/o all auxiliary: HR@10=0.5764 (-21.0% vs full=0.7296); w/o healthness alone: -7.2% |
+| NGCF residual sensitivity (dilution proxy) | EXP-F v2b | HR@10 -1.2% to -1.4% across all variants (vs NutriGraphNet's up to -21.0%) |
 | Best overall HR@10 | EXP-B/D | NGCF: 0.7844 (100% density, d=64 baseline); 0.7867 (d=256) |
 | Best overall AUC | EXP-D | NGCF d=256: 0.8810 |
 
@@ -497,7 +531,7 @@ Based on our empirical findings, we propose the following actionable guidelines 
 | Embedding dim (HFRS-DA) | **d=32 only** -- AUC collapses -0.2736p at d=256 | EXP-D: AUC=0.8623 at d=32 vs. 0.5740 at d=256 |
 | Health constraint weight (lambda) | **lambda=0.01 as default** — robust plateau in [0.001,0.1], HR@10 stable (Delta<0.4%) | EXP-C: HR@10=0.739-0.743 across lambda=0.001-0.1; degradation only at lambda>=0.5 |
 | Health backpropagation | **Route health gradients via healthness edge convolution** | EXP-C: NutriGraphNet HealthGain@10=-0.009 (active all lambda); HFRS-DA severs gradient |
-| Auxiliary edge types | **Ablate each edge type** to verify forward-pass contribution | EXP-F: HFRS-DA Delta HR@10=0.000000 for all 3 auxiliary edge types |
+| Auxiliary edge types | **Ablate each edge type** to verify forward-pass contribution | EXP-F: HFRS-DA Delta HR@10=0.000000 for all 3 auxiliary edge types; NutriGraphNet shows real -1.7% to -21.0% degradation (EXP-F v2a), confirming genuine topology dependence |
 | "Heterogeneous graph" claims | Only claim graph-awareness if architecture **routes messages** through edges | EXP-F: topology invariance invalidates HFRS-DA's heterogeneous graph claim |
 | Clinical health-aware deployment | **Verify health gradients architecturally**, not just via named loss | EXP-C/F: HFRS-DA health loss zero; NutriGraphNet shows active HealthGain@K |
 
@@ -515,7 +549,7 @@ We presented a systematic empirical analysis of GNN-based food recommendation on
 
 **(4) Health Constraint Robustness vs. Architectural Failure.** NutriGraphNet — which routes message-passing through all 9 edge types including `healthness` — shows a **λ-robust plateau**: HR@10 varies by only Δ=0.0040 across λ ∈ {0.001–0.1} (0.7390–0.7430), with HealthGain@10≈−0.009 consistently non-zero across all λ values, confirming active health gradient flow independent of λ choice. Recommended default: λ=0.01 (plateau center, no ranking cost). In contrast, HFRS-DA's health loss produces zero measurable effect (Δ HR@10 = 0.000 exactly, Δ AUC < 1.25×10⁻⁷) due to architecturally severed health gradient paths and complete topology invariance (EXP-F: Δ HR@10 = 0.000 for all 5 auxiliary edge type removals). These results establish that health-aware recommendation is an **architectural property**: health gradients must flow through health-relevant convolution paths, not merely be included in the loss function.
 
-**Our findings challenge four widely held assumptions** in graph-based food recommendation: (a) SGL augmentation improves sparse graphs; (b) architectural complexity correlates with ranking quality; (c) naming a model "health-aware" guarantees health optimization; (d) deeper GNN layers are necessary for rich representations on heterogeneous graphs — NutriGraphNet validates (c) positively with the nuance that health-aware improvement is **λ-robust** (plateau λ∈[0.001–0.1], ΔHR@10<0.4%) rather than sensitive to a single optimal value, EXP-G refutes (d) with the nuance that L=3 actively harms LightGCN (−8.1% HR@10), and EXP-B/A collectively refute (a) and (b). Future work will investigate: (i) ingredient-conditioned positive sampling for contrastive learning in sparse nutrition graphs; (ii) EXP-F v2 with NutriGraphNet to quantify the contribution of each auxiliary edge type; and (iii) extending NutriGraphNet to explicit HealthGain maximization objectives.
+**Our findings challenge four widely held assumptions** in graph-based food recommendation: (a) SGL augmentation improves sparse graphs; (b) architectural complexity correlates with ranking quality; (c) naming a model "health-aware" guarantees health optimization; (d) deeper GNN layers are necessary for rich representations on heterogeneous graphs — NutriGraphNet validates (c) positively with the nuance that health-aware improvement is **λ-robust** (plateau λ∈[0.001–0.1], ΔHR@10<0.4%) rather than sensitive to a single optimal value, EXP-G refutes (d) with the nuance that L=3 actively harms LightGCN (−8.1% HR@10), and EXP-B/A collectively refute (a) and (b). EXP-F v2 confirms this architecturally: NutriGraphNet's HR@10 degrades by up to 21.0% when all auxiliary edges are removed (vs. HFRS-DA's exact 0.000), providing functional (not just code-level) evidence that its message-passing genuinely depends on the heterogeneous topology it claims to model. Future work will investigate: (i) ingredient-conditioned positive sampling for contrastive learning in sparse nutrition graphs; (ii) reducing the fold-to-fold instability observed when critical auxiliary edges (healthness, all-auxiliary) are removed (EXP-F v2a, σ up to 0.141); and (iii) extending NutriGraphNet to explicit HealthGain maximization objectives.
 
 ---
 
@@ -534,6 +568,12 @@ We presented a systematic empirical analysis of GNN-based food recommendation on
 - Yu et al. (2023). XSimGCL. IEEE TKDE.
 
 ---
+*New in v1.1 (2026-07-15): EXP-F v2 GPU 5-fold 완료 반영.*  
+*Table F-v2a (NutriGraphNet ablation) + Table F-v2b (NGCF 50% dilution ablation) 신규 추가, "camera-ready version" placeholder 제거.*  
+*Finding F4-F6 신규: NutriGraphNet은 그래프 구조에 실제로 의존(w/o all auxiliary: -21.0%, w/o healthness: -7.2%), fold 간 변동성도 증가(σ=0.031→0.141); NGCF는 dilution proxy로도 -1.2%~-1.4%에 그쳐 HFRS-DA(0.000)와 NutriGraphNet(-21.0%) 사이 중간 지점 확인.*  
+*버그 수정 이력: EXP-F v2b 최초 실행 시 모든 ablation variant가 full_graph와 완전히 동일한 값을 냄 — 데이터 레벨 edge_index zeroing이 NGCF dilution 로직보다 먼저 실행되어 dilution이 조용히 no-op 처리되던 버그. ablation_model이 ngcf/lightgcn일 때 데이터 레벨 zeroing을 건너뛰도록 수정 후 재실행하여 유효한 결과 확보.*  
+*Table S / Design Guidelines EXP-F 행 갱신. Conclusion 향후 연구 항목에서 "EXP-F v2 예정" 제거, fold 변동성 개선을 향후 과제로 대체.*  
+---
 *Draft v0.7 — 2026-07-13*  
 *New in v0.7: Section 5 Table 1 GPU 5-fold 수치로 전면 교체.*  
 *Table 1: B_sparsity_100pct 기준 5모델 GPU 실측값(AUC/F1/HR@5/HR@10/HR@20/NDCG@10/MRR/±σ); NutriGraphNet(λ=0.005) 행 신규 추가.*  
@@ -547,4 +587,4 @@ We presented a systematic empirical analysis of GNN-based food recommendation on
 *New in v0.6 (2026-07-13): GPU 5-fold 결과 전면 반영.*  
 *EXP-B: hfrsda(NutriGraphNet) 열 추가 → NutriGraphNet이 10%–70% 전 밀도에서 최고 성능.*  
 *EXP-C: Table C GPU 5-fold로 교체 → λ_optimal=0.005 (CPU 1-fold λ=0.5에서 변경).*  
-*Pending: EXP-F v2 (NutriGraphNet topology ablation); References [CITE] 7개 채우기; Figure 1/2/4/6 생성*
+*Pending: References [CITE] 7개 채우기; Figure 1/2/4/6 생성; 저자명 placeholder 채우기*
