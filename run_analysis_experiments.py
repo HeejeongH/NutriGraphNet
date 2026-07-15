@@ -377,9 +377,9 @@ def collect_and_print_summary_v3():
         print(f"{label:20s} {v2_str:>18} {v3_str:>18}")
 
 
-
+def collect_and_print_summary(extra_dirs=None):
     """Collect all results and print summary table.
-    
+
     extra_dirs: 추가로 스캔할 디렉토리 리스트 (예: ['results/gpu'])
     results/analysis 와 results/gpu 를 모두 자동으로 스캔함.
     """
