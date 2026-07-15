@@ -5,11 +5,13 @@
 - paper_discussion.tex: 새 결과 기반 분석 섹션
 """
 import sys
-sys.path.insert(0, '/home/user/webapp/paper')
-from allrecipes_results import ALLRECIPES, SIG
 from pathlib import Path
 
-OUT = Path('/home/user/webapp/paper')
+HERE = Path(__file__).resolve().parent
+sys.path.insert(0, str(HERE))
+from allrecipes_results import ALLRECIPES, SIG
+
+OUT = HERE
 
 # ─────────────────────────────────────────────────────────────────────────────
 # 헬퍼
@@ -256,4 +258,4 @@ regularisation rather than a model capacity limitation.
 
 (OUT / 'paper_discussion.tex').write_text(discussion, encoding='utf-8')
 print("✅ paper_discussion.tex saved")
-print("\nAll paper assets written to /home/user/webapp/paper/")
+print(f"\nAll paper assets written to {OUT}/")

@@ -19,9 +19,12 @@ import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
 from matplotlib.gridspec import GridSpec
 
-# ── paths ─────────────────────────────────────────────────────────────────────
-SRC  = "/home/user/webapp/results/analysis/SUMMARY_v3.json"
-OUT  = "/home/user/webapp/nutrigraphnet_results/figures"
+# ── paths (repo-relative) ─────────────────────────────────────────────────────
+HERE    = os.path.dirname(os.path.abspath(__file__))
+ROOT    = os.path.dirname(HERE)
+SRC     = os.path.join(ROOT, "results", "analysis", "SUMMARY_v4.json")
+GPU_DIR = os.path.join(ROOT, "results", "gpu")   # EXP-F v2 (5-fold, full params)
+OUT     = os.path.join(HERE, "figures")
 os.makedirs(OUT, exist_ok=True)
 
 with open(SRC) as f:
@@ -224,60 +227,89 @@ plt.close(fig)
 print("  → fig4_dim_sweep saved.")
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# Figure 5 — EXP-F: Graph component ablation
+# Figure 5 — EXP-F v2: Graph component ablation
+#   (a) NutriGraphNet direct edge ablation (results/gpu/F_ablation_*)
+#   (b) Δ HR@10 vs full graph: NutriGraphNet vs NGCF 50% dilution
+#       (results/gpu/F_ngcf_dilution_*); HFRS-DA v1 = 0.000 reference line
 # ═══════════════════════════════════════════════════════════════════════════════
-print("Generating Figure 5: Graph ablation …")
+print("Generating Figure 5: Graph ablation (EXP-F v2) …")
 
-ablation_keys = {
-    "Full Graph":            "F_ablation_full_graph/hfrsda",
-    "w/o Ingredient":        "F_ablation_no_ingredient/hfrsda",
-    "w/o Time":              "F_ablation_no_time/hfrsda",
-    "w/o Healthness":        "F_ablation_no_ingredient_time/hfrsda",   # proxy
-    "w/o Food-Similar":      "F_ablation_no_food_similar/hfrsda",
-    "w/o Ingr. & Time":      "F_ablation_no_ingredient_time/hfrsda",
-}
-# actual keys available
-abl_variants = [
-    ("Full Graph",          "F_ablation_full_graph/hfrsda"),
-    ("w/o Ingredient",      "F_ablation_no_ingredient/hfrsda"),
-    ("w/o Time",            "F_ablation_no_time/hfrsda"),
-    ("w/o Food-Similar",    "F_ablation_no_food_similar/hfrsda"),
-    ("w/o Ingr.+Time",      "F_ablation_no_ingredient_time/hfrsda"),
+ABL_VARIANTS = [
+    ("Full Graph",        "full_graph"),
+    ("w/o Ingredient",    "no_ingredient"),
+    ("w/o Time",          "no_time"),
+    ("w/o Food-Similar",  "no_food_similar"),
+    ("w/o Healthness",    "no_healthness"),
+    ("w/o Ingr.+Time",    "no_ingredient_time"),
+    ("w/o All Auxiliary", "no_all_auxiliary"),
 ]
 
-labels_F  = [v[0] for v in abl_variants]
-hr_vals   = [raw[v[1]]["HR@10"]   for v in abl_variants]
-ndcg_vals = [raw[v[1]]["NDCG@10"] for v in abl_variants]
-auc_vals  = [raw[v[1]]["AUC"]     for v in abl_variants]
+def load_expf(prefix, result_file):
+    out = {}
+    for _, tag in ABL_VARIANTS:
+        with open(os.path.join(GPU_DIR, f"{prefix}_{tag}", result_file)) as f:
+            out[tag] = json.load(f)["aggregated"]
+    return out
 
+v2a = load_expf("F_ablation",      "results_full.json")   # NutriGraphNet
+v2b = load_expf("F_ngcf_dilution", "results_ngcf.json")   # NGCF dilution proxy
+
+C_NUTRI, C_NGCF = "#2a78d6", "#008300"
+
+labels_F = [v[0] for v in ABL_VARIANTS]
+tags_F   = [v[1] for v in ABL_VARIANTS]
+hr_a = [v2a[t]["HR@10"]["mean"] for t in tags_F]
+sd_a = [v2a[t]["HR@10"]["std"]  for t in tags_F]
+hr_b = [v2b[t]["HR@10"]["mean"] for t in tags_F]
+
+fig, axes = plt.subplots(1, 2, figsize=(12.5, 4.6))
+
+# (a) NutriGraphNet direct ablation — HR@10 with 5-fold std
+ax = axes[0]
 x = np.arange(len(labels_F))
-w = 0.27
-
-fig, ax = plt.subplots(figsize=(10, 4.5))
-bars1 = ax.bar(x - w, hr_vals,   w, label="HR@10",   color="#76B7B2", edgecolor="white")
-bars2 = ax.bar(x,     ndcg_vals, w, label="NDCG@10", color="#4E79A7", edgecolor="white")
-bars3 = ax.bar(x + w, auc_vals,  w, label="AUC",     color="#59A14F", edgecolor="white")
-
+ax.bar(x, hr_a, 0.62, yerr=sd_a, capsize=3,
+       color=C_NUTRI, edgecolor="white",
+       error_kw=dict(ecolor="#555555", lw=1.2, alpha=0.85))
+ax.axhline(hr_a[0], color="#555555", lw=1, ls="--", alpha=0.6)
+for xi, h, s in zip(x, hr_a, sd_a):
+    ax.text(xi, h + s + 0.015, f"{h:.3f}", ha="center", va="bottom", fontsize=7.5)
 ax.set_xticks(x)
-ax.set_xticklabels(labels_F, rotation=12, ha="right")
-ax.set_ylabel("Score")
-ax.set_ylim(0, 1.05)
-ax.legend()
-ax.set_title("Figure 5. Graph Component Ablation Study (HFRS-DA)")
+ax.set_xticklabels(labels_F, rotation=18, ha="right", fontsize=8.5)
+ax.set_ylabel("HR@10")
+ax.set_ylim(0, 0.9)
+ax.set_title("(a) NutriGraphNet — Direct Edge Ablation (5-fold, mean ± σ)")
 
-# annotate bars
-for bars in [bars1, bars2, bars3]:
+# (b) relative degradation vs full graph
+ax = axes[1]
+abl_tags, abl_labels = tags_F[1:], labels_F[1:]
+d_a = [100 * (v2a[t]["HR@10"]["mean"] - hr_a[0]) / hr_a[0] for t in abl_tags]
+d_b = [100 * (v2b[t]["HR@10"]["mean"] - hr_b[0]) / hr_b[0] for t in abl_tags]
+
+x2, w2 = np.arange(len(abl_tags)), 0.38
+bars_a = ax.bar(x2 - w2/2, d_a, w2, label="NutriGraphNet (direct ablation)",
+                color=C_NUTRI, edgecolor="white")
+bars_b = ax.bar(x2 + w2/2, d_b, w2, label="NGCF (50% interaction dilution)",
+                color=C_NGCF, edgecolor="white")
+ax.axhline(0, color="#888888", lw=1.4)
+for bars in (bars_a, bars_b):
     for bar in bars:
         h = bar.get_height()
-        ax.text(bar.get_x() + bar.get_width()/2, h + 0.008,
-                f"{h:.3f}", ha="center", va="bottom", fontsize=7.5)
+        ax.text(bar.get_x() + bar.get_width()/2, h - 0.4, f"{h:.1f}",
+                ha="center", va="top", fontsize=7)
+ax.set_xticks(x2)
+ax.set_xticklabels(abl_labels, rotation=18, ha="right", fontsize=8.5)
+ax.set_ylabel("Δ HR@10 vs. Full Graph (%)")
+ax.set_ylim(-26, 4)
+ax.set_title("(b) Relative Degradation per Ablated Component")
+ax.legend(loc="lower left", fontsize=8)
+ax.text(0.02, 0.96,
+        "HFRS-DA (v1): Δ = 0.000 exactly for every variant\n"
+        "(topology-invariant — auxiliary edges never consumed)",
+        transform=ax.transAxes, fontsize=8, va="top",
+        bbox=dict(boxstyle="round,pad=0.35", fc="#FFF9C4", ec="#F0C040", alpha=0.9))
 
-# highlight zero-change
-ax.text(0.98, 0.98,
-        "All variants identical\n→ edge ablation ineffective\n(heterogeneous graph robustness)",
-        transform=ax.transAxes, fontsize=8.5, ha="right", va="top",
-        bbox=dict(boxstyle="round,pad=0.4", fc="#FFF9C4", ec="#F0C040", alpha=0.9))
-
+fig.suptitle("Figure 5. Graph Component Ablation (EXP-F v2): NutriGraphNet Depends on "
+             "Topology, NGCF Marginally, HFRS-DA Not at All", fontsize=11, y=1.01)
 fig.tight_layout()
 fig.savefig(f"{OUT}/fig5_graph_ablation.pdf", bbox_inches="tight")
 fig.savefig(f"{OUT}/fig5_graph_ablation.png", bbox_inches="tight")
@@ -389,13 +421,16 @@ print(f"  MF   (d=16→256): {mf_hr_d[0]:.3f} → {mf_hr_d[-1]:.3f}")
 print(f"  SGL  (d=16→256): {sgl_hr_d[0]:.3f} → {sgl_hr_d[-1]:.3f}")
 print(f"  HFRS (d=16→256): {hfrs_hr_d[0]:.3f} → {hfrs_hr_d[-1]:.3f}")
 
-# F: ablation
-f_hr = [raw[v[1]]["HR@10"]   for v in abl_variants]
-f_auc = [raw[v[1]]["AUC"]    for v in abl_variants]
-print(f"\n[EXP-F] Graph Ablation (HFRS-DA):")
-for v, h, a in zip(abl_variants, f_hr, f_auc):
-    print(f"  {v[0]:20s}  HR@10={h:.4f}  AUC={a:.4f}")
-print(f"  → All variants IDENTICAL → heterogeneous edges carry no useful signal")
+# F v2: ablation
+print(f"\n[EXP-F v2] Graph Ablation (GPU 5-fold, full params):")
+for (label, tag) in ABL_VARIANTS:
+    ha, hb = v2a[tag]["HR@10"]["mean"], v2b[tag]["HR@10"]["mean"]
+    da = 100 * (ha - hr_a[0]) / hr_a[0]
+    db = 100 * (hb - hr_b[0]) / hr_b[0]
+    print(f"  {label:20s}  NutriGraphNet HR@10={ha:.4f} ({da:+.1f}%)   "
+          f"NGCF-diluted HR@10={hb:.4f} ({db:+.1f}%)")
+print(f"  → NutriGraphNet: graded topology dependence (−1.7% … −21.0%)")
+print(f"  → NGCF dilution: marginal (−1.2% … −1.4%);  HFRS-DA v1: Δ=0.000 exactly")
 
 print("\n" + "="*65)
 print(f"All figures saved to: {OUT}/")
