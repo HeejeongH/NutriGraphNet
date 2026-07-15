@@ -17,9 +17,19 @@ echo ============================================================
 ::       v2 (EXP-B/C/D/F):  epochs=300, lr=1e-3, patience=30
 ::       v3 (--exp V3):     epochs=100, lr=3e-4, patience=15
 ::   Cutting the learning rate to 1/3 requires MORE epochs, not fewer; v3 got
-::   1/3 of both. Undertraining alone can explain the gap. Evaluation protocol
-::   IS comparable (both use sampled ranking, 1 pos + 100 negs, 80/5/15 split),
-::   so only the budget needs equalising.
+::   1/3 of both. Evaluation protocol IS comparable (both use sampled ranking,
+::   1 pos + 100 negs, 80/5/15 split), so only the budget needs equalising.
+::
+::   CONFIRMED BY THE TRAINING CURVE (results/v3/fold_1_metrics.json history):
+::       epoch   10   30   50   70   80  100
+::       AUC   .741 .789 .798 .810 .805 .808
+::       BPR   .587 .464 .450 .422 .421 .436
+::   Early stopping NEVER fired -- all 5 folds ran the full 100 epochs with BPR
+::   loss still falling and AUC still climbing. v3 did not converge; it hit the
+::   epoch wall mid-descent. The undertraining hypothesis is not speculation.
+::   (phase1_frac=0.8 also meant health fine-tuning got only epochs 81-100;
+::   at 300 epochs it gets 61-300 -> 240 vs 20 phase-1 epochs and 60 vs 20
+::   phase-2 epochs.)
 ::
 :: TWO RUNS TO DISAMBIGUATE
 ::   A: epochs=300, lr=3e-4  -> v3's designed LR, fair epoch budget.
@@ -31,10 +41,11 @@ echo ============================================================
 ::
 :: KNOWN LIMITATION
 ::   v3 hardcodes early_stop_patience=15 (nutrigraphnet_v3.py:1008, no CLI
-::   flag) vs v2's 30. With lr=3e-4 this may still stop prematurely. If run A
-::   early-stops well before 300 epochs, patience -- not epochs -- is the
-::   binding constraint and the code needs a --patience flag before any
-::   conclusion is drawn. Watch the per-fold stopping epoch in the log.
+::   flag) vs v2's 30. It never fired at 100 epochs, but at 300 it may -- and
+::   15 is tight for lr=3e-4. If a fold stops well short of 300 while its loss
+::   is still falling, patience (not epochs) has become the binding constraint
+::   and v3 needs a --patience flag before any verdict is drawn. Watch the
+::   per-fold stopping epoch in the log.
 
 echo.
 echo [1/2] v3 fair budget: epochs=300, lr=3e-4 (designed LR)
