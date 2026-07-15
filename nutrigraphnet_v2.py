@@ -17,7 +17,7 @@ for Personalized Food Recommendation
 7. [Training] OneCycleLR with warmup
 8. [Evaluation] NDCG@K, HR@K, MRR, HealthGain@K
 9. [Eval] Statistical significance test (Wilcoxon)
-10. [Baseline] MF, LightGCN, NGCF, SGL, HFRS-DA 비교 모델
+10. [Baseline] MF, LightGCN, NGCF, SGL + DualAttn-TB(자체 topology-blind 대조군) 비교
 
 Author: Heejeong
 Date: 2026-06-27
@@ -484,7 +484,7 @@ class LightGCN(nn.Module):
 
 
 # ============================================================================
-# 4b. ADDITIONAL BASELINES: NGCF, SGL, HFRS-DA
+# 4b. ADDITIONAL BASELINES: NGCF, SGL + DualAttn-TB control (class HFRSDAModel)
 # ============================================================================
 
 class NGCF(nn.Module):
@@ -665,17 +665,42 @@ class SGL(nn.Module):
 
 class HFRSDAModel(nn.Module):
     """
-    HFRS-DA: Health-aware Food Recommendation System with Dual Attention
-    (Heterogeneous Graphs). Simplified re-implementation based on:
-      Tran et al., Computers in Biology and Medicine, 2024.
-      DOI: 10.1016/j.compbiomed.2023.107879
+    DualAttn-TB — Dual-Attention, Topology-Blind control model.
+
+    !!! THIS IS NOT AN IMPLEMENTATION OF HFRS-DA. !!!
+    Despite the legacy class/variant name ('hfrsda', kept only so existing
+    results paths such as results_hfrsda.json stay valid), this is OUR OWN
+    simplified control model. It was loosely inspired by the dual-attention
+    design philosophy of HFRS-DA (Forouzandeh et al., "Health-aware food
+    recommendation system with dual attention in heterogeneous graphs",
+    Computers in Biology and Medicine, 2024, DOI 10.1016/j.compbiomed.2023.107879
+    -- note the earlier docstring here misattributed that paper to "Tran et al.")
+    but it does NOT reproduce that architecture:
+
+      - The published HFRS-DA reconstructs node features and edges via dual
+        hierarchical attention and analyses recipe neighbourhoods in the
+        heterogeneous graph -- i.e. it DOES consume graph topology. An official
+        implementation is public:
+        github.com/S-Forouzandeh/Health-aware-Food-Recommendation-System-with-Dual-Attention-in-Heterogeneous-Graphs
+      - This model uses plain nn.Embedding lookups plus nn.MultiheadAttention
+        and never reads the auxiliary edge_index tensors at all.
+
+    Therefore NO measurement produced by this class supports any claim about
+    HFRS-DA's published behaviour or performance. Its topology-invariance
+    (delta HR@10 = 0.000 exactly under auxiliary-edge ablation) is a designed
+    property of THIS code, not a finding about HFRS-DA.
+
+    Its purpose in the paper is as a deliberate topology-blind CONTROL: it
+    isolates how much of NutriGraphNet's performance comes from actually
+    consuming the heterogeneous graph, and it validates the ablation protocol
+    (a model that ignores auxiliary edges must score exactly 0.000 when they
+    are removed -- if it did not, the ablation harness would be buggy).
 
     Architecture:
-      - Node-Level Attention (NLA): GAT on user-food-ingredient meta-paths
-        capturing user preference signals.
-      - Semantic-Level Attention (SLA): health-score-weighted attention
-        biasing recommendations toward nutritionally superior foods.
-      - Final score: α * NLA_score + (1-α) * SLA_score
+      - NLA branch: multi-head self-attention over user/food embeddings
+        (direct lookup; no message passing).
+      - SLA branch: food-health scoring head.
+      - Final score: alpha * NLA_score + (1-alpha) * SLA_score
     """
     def __init__(self, num_users, num_foods, num_ingredients,
                  emb_dim=64, num_heads=4, dropout=0.1,
@@ -1482,7 +1507,7 @@ def _eval_baseline_rank(model, data, device, out_dict, kw, model_type,
         else:
             u_e, f_e = model.u_emb.weight.detach(), model.f_emb.weight.detach()
     elif model_type == 'hfrsda':
-        # HFRS-DA: use model.forward() directly for each candidate set
+        # DualAttn-TB: use model.forward() directly for each candidate set
         # (raw embedding dot-product would bypass the NLA attention, causing
         #  train/eval inconsistency — fixed by calling forward per user)
         u_e = None
@@ -1694,7 +1719,7 @@ def run_fold(fold, train_data, val_data, test_data, args, device, variant='full'
     # ── Criterion ──
     lh  = args.lambda_health if ('no_health' not in variant and mtype == 'gnn') else 0.0
     lcl = args.lambda_cl     if ('no_cl'     not in variant and mtype == 'gnn') else 0.0
-    # HFRS-DA has its own internal health branch — keep BPR only
+    # DualAttn-TB has its own internal health branch — keep BPR only
     criterion = NutriLoss(lambda_health=lh, lambda_cl=lcl,
                           temperature=args.temperature)
 
@@ -2010,7 +2035,7 @@ def generate_latex_table(all_results, output_dir, sig_results=None):
         'lightgcn':  r'LightGCN~\cite{he2020lightgcn}',
         'ngcf':      r'NGCF~\cite{wang2019neural}',
         'sgl':       r'SGL~\cite{wu2021self}',
-        'hfrsda':    r'HFRS-DA~\cite{tran2024hfrsda}',
+        'hfrsda':    r'DualAttn-TB (topology-blind control, ours)',
         'no_dual':   r'NGN$_{\text{-D}}$',
         'no_health': r'NGN$_{\text{-H}}$',
         'no_cl':     r'NGN$_{\text{-CL}}$',
@@ -2181,7 +2206,7 @@ def plot_ablation_comparison(all_results, output_dir):
                'no_dual', 'no_health', 'no_cl', 'full']
     labels  = {
         'mf':        'MF', 'lightgcn': 'LightGCN',
-        'ngcf':      'NGCF', 'sgl': 'SGL', 'hfrsda': 'HFRS-DA',
+        'ngcf':      'NGCF', 'sgl': 'SGL', 'hfrsda': 'DualAttn-TB',
         'no_dual':   'NGN-D', 'no_health': 'NGN-H',
         'no_cl':     'NGN-CL', 'full': 'NutriGraphNet\nv2 (Full)',
     }
@@ -2275,7 +2300,7 @@ def main():
     parser.add_argument('--sgl_aug',         type=float, default=0.1,
                         help='SGL edge dropout ratio for augmentation (default: 0.1)')
     parser.add_argument('--hfrsda_alpha',    type=float, default=0.3,
-                        help='HFRS-DA health branch weight α (default: 0.3)')
+                        help='DualAttn-TB health branch weight α (default: 0.3)')
     # Lambda sweep (for sensitivity analysis)
     parser.add_argument('--lambda_sweep',    action='store_true',
                         help='Run lambda_health sensitivity sweep (0.001~1.0)')
