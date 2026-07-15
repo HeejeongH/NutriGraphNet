@@ -1,14 +1,26 @@
 """
-Generate all analysis figures for the Option C paper:
-"Why Graph Augmentation Fails in Sparse Nutrition Graphs"
+Figures for:
+"Auxiliary Nutritional Structure Substitutes for Interaction Data in
+ Health-Aware Food Recommendation: Evidence from a National Dietary Survey Graph"
 
-Figures:
-  Fig 1 — EXP-A: SGL aug_ratio sweep (HR@10, NDCG@10, MRR)
-  Fig 2 — EXP-B: Interaction sparsity sweep (4 models × HR@10 & NDCG@10)
-  Fig 3 — EXP-C: λ_health sensitivity (AUC & HR@10 flat-line)
-  Fig 4 — EXP-D: Embedding dim sweep (5 models × HR@10)
-  Fig 5 — EXP-F: Graph ablation bar chart (HFRS-DA variants)
-  Fig 6 — Summary radar / heatmap: AUC vs HR@10 trade-off matrix
+  Fig 1 — EXP-A: SGL aug_ratio sweep (results/analysis; the only source)
+  Fig 2 — EXP-B: Sparsity sweep, 6 models incl. NutriGraphNet (results/gpu)
+  Fig 3 — EXP-C-Full: NutriGraphNet λ_health sweep (results/gpu)
+  Fig 4 — EXP-D: Embedding dim sweep (results/analysis; the only source)
+  Fig 5 — EXP-F v2: NutriGraphNet vs NGCF-dilution ablation (results/gpu)
+  Fig 6 — AUC vs HR@10 at full density, 6 models (results/gpu)
+
+DATA SOURCE RULE
+  Anything the paper reports from results/gpu must be plotted from results/gpu.
+  results/analysis is a different, earlier run and disagrees with it (19 of 20
+  EXP-B cells differ, e.g. NGCF HR@10 at 100%: 0.7773 vs 0.7844), so figures
+  drawn from SUMMARY_v4 silently contradicted the tables they illustrate.
+  EXP-A and EXP-D were never re-run on GPU, so those two alone still read
+  SUMMARY_v4 -- which is also where the paper's Tables A and D come from.
+
+NAMING
+  The 'hfrsda' key is the DualAttn-TB topology-blind control (ours), NOT an
+  implementation of HFRS-DA. See paper 4.1 and the HFRSDAModel docstring.
 """
 
 import json, os, math
@@ -46,17 +58,54 @@ plt.rcParams.update({
     "figure.dpi": 150,
 })
 
+# Categorical palette: validated with the dataviz validator (light surface).
+# Adjacent-pair CVD separation for aqua/magenta sits in the 6-8 floor band, which
+# is only admissible with secondary encoding -- hence the distinct marker per
+# series below. Do not reorder or recolour without re-running the validator.
 MODEL_COLOR = {
-    "mf":       "#4E79A7",
-    "lightgcn": "#F28E2B",
-    "ngcf":     "#59A14F",
-    "sgl":      "#E15759",
-    "hfrsda":   "#76B7B2",
+    "mf":       "#eda100",   # yellow
+    "lightgcn": "#008300",   # green
+    "ngcf":     "#e87ba4",   # magenta
+    "sgl":      "#1baf7a",   # aqua
+    "hfrsda":   "#4a3aa7",   # violet  -- the topology-blind control
+    "full":     "#2a78d6",   # blue    -- NutriGraphNet (ours)
+}
+# Secondary encoding: identity must never rest on colour alone.
+MODEL_MARKER = {
+    "mf": "o", "lightgcn": "s", "ngcf": "^", "sgl": "v",
+    "hfrsda": "D", "full": "P",
 }
 MODEL_LABEL = {
     "mf": "MF", "lightgcn": "LightGCN",
-    "ngcf": "NGCF", "sgl": "SGL", "hfrsda": "HFRS-DA",
+    "ngcf": "NGCF", "sgl": "SGL",
+    "hfrsda": "DualAttn-TB (control)",   # NOT HFRS-DA -- see paper 4.1
+    "full": "NutriGraphNet",
 }
+
+
+# ── GPU 5-fold loaders ────────────────────────────────────────────────────────
+# The paper's Tables B/C report results/gpu, NOT results/analysis. The two are
+# different runs and disagree (e.g. NGCF HR@10 at 100%: 0.7773 vs 0.7844), so
+# figures sourced from SUMMARY_v4 would not match the tables they illustrate.
+# EXP-A and EXP-D exist only under results/analysis, so those keep using `raw`.
+def _gpu_agg(rel_dir, result_file):
+    with open(os.path.join(GPU_DIR, rel_dir, result_file)) as f:
+        return json.load(f)["aggregated"]
+
+def _val(agg, metric):
+    v = agg[metric]
+    return (v["mean"], v.get("std", 0.0)) if isinstance(v, dict) else (v, 0.0)
+
+def gpu_sparsity(pct, model, metric):
+    """EXP-B. Baselines live in B_sparsity_*; NutriGraphNet in B_full_* (it was
+    never run in the original sweep -- see paper changelog v1.3)."""
+    if model == "full":
+        return _val(_gpu_agg(f"B_full_{pct}pct", "results_full.json"), metric)
+    return _val(_gpu_agg(f"B_sparsity_{pct}pct", f"results_{model}.json"), metric)
+
+def gpu_lambda(lam, metric):
+    """EXP-C-Full: NutriGraphNet lambda sweep at full parameters."""
+    return _val(_gpu_agg(f"C_lambda_{lam}", "results_full.json"), metric)
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # Figure 1 — EXP-A: SGL aug_ratio sweep
@@ -108,41 +157,55 @@ print("  → fig1_sgl_aug_sweep saved.")
 # ═══════════════════════════════════════════════════════════════════════════════
 print("Generating Figure 2: Sparsity sweep …")
 
-# parse sparsity data
-sparsity_map = {10: "10pct", 30: "30pct", 50: "50pct", 70: "70pct", 100: "100pct"}
-models_B = ["mf", "lightgcn", "ngcf", "sgl"]
+models_B = ["mf", "lightgcn", "ngcf", "sgl", "hfrsda", "full"]
 x_pcts   = [10, 30, 50, 70, 100]
 
-data_B = {m: {"HR@10": [], "NDCG@10": [], "AUC": []} for m in models_B}
+data_B = {m: {met: [] for met in ["HR@10", "NDCG@10"]} for m in models_B}
+err_B  = {m: [] for m in models_B}
 for pct in x_pcts:
-    tag = sparsity_map[pct]
     for m in models_B:
-        key = f"B_sparsity_{tag}/{m}"
-        for met in ["HR@10", "NDCG@10", "AUC"]:
-            data_B[m][met].append(raw[key][met])
+        for met in ["HR@10", "NDCG@10"]:
+            data_B[m][met].append(gpu_sparsity(pct, m, met)[0])
+        err_B[m].append(gpu_sparsity(pct, m, "HR@10")[1])
 
-fig, axes = plt.subplots(1, 2, figsize=(11, 4.2))
+fig, axes = plt.subplots(1, 2, figsize=(12, 4.4))
 
 for ax, metric in zip(axes, ["HR@10", "NDCG@10"]):
     for m in models_B:
-        vals = data_B[m][metric]
-        ax.plot(x_pcts, vals, "o-",
+        ours = (m == "full")
+        ax.plot(x_pcts, data_B[m][metric], MODEL_MARKER[m] + "-",
                 color=MODEL_COLOR[m], label=MODEL_LABEL[m],
-                lw=2.2, ms=7, markerfacecolor="white", markeredgewidth=2)
+                lw=3.0 if ours else 1.8, ms=9 if ours else 6,
+                markerfacecolor="white", markeredgewidth=2 if ours else 1.6,
+                zorder=5 if ours else 3)
     ax.set_xlabel("Interaction Ratio (%)")
     ax.set_ylabel(metric)
-    ax.set_title(f"({'a' if metric=='HR@10' else 'b'}) {metric} vs. Data Sparsity")
     ax.set_xticks(x_pcts)
-    ax.legend(loc="lower right")
+    ax.set_ylim(0, 0.9)
 
-# add annotation: SGL collapse region
-for ax in axes:
-    ax.axvspan(0, 35, alpha=0.06, color="#E15759")
-    ax.text(20, ax.get_ylim()[0] + (ax.get_ylim()[1]-ax.get_ylim()[0])*0.03,
-            "Collapse\nZone", ha="center", fontsize=8, color="#E15759", alpha=0.8)
+axes[0].set_title("(a) HR@10 — NutriGraphNet is density-invariant")
+axes[1].set_title("(b) NDCG@10 — the ordering advantage does not follow")
+axes[0].legend(loc="lower right", fontsize=8, ncol=2)
 
-fig.suptitle("Figure 2. Model Performance vs. Interaction Sparsity\n"
-             "(SGL collapses at low density; MF remains stable)", fontsize=11, y=1.01)
+# Panel (a): the two claims the paper actually makes, marked in place.
+ax = axes[0]
+ax.annotate("+45.0% over NGCF\nat 10% density",
+            xy=(10, data_B["full"]["HR@10"][0]), xytext=(17, 0.845),
+            fontsize=8, color=MODEL_COLOR["full"],
+            arrowprops=dict(arrowstyle="->", color=MODEL_COLOR["full"], lw=1.2))
+# No leader line here: any stroke long enough to reach the NGCF endpoint would
+# cross the model cluster and read as a sixth series. The empty mid-band plus an
+# explicit model name carries it instead.
+ax.text(74, 0.55, "NGCF overtakes\nabove ~50% density", fontsize=8,
+        color=MODEL_COLOR["ngcf"], ha="center", va="center")
+ax.annotate("SGL collapse", xy=(10, data_B["sgl"]["HR@10"][0]),
+            xytext=(24, 0.10), fontsize=8, color=MODEL_COLOR["sgl"],
+            arrowprops=dict(arrowstyle="->", color=MODEL_COLOR["sgl"], lw=1.2))
+
+fig.suptitle("Figure 2. Auxiliary Structure Substitutes for Interaction Data\n"
+             "NutriGraphNet leads where interactions are scarcest and is flat across a 10x change "
+             "in interaction volume (0.738 -> 0.729, ratio 0.99x)",
+             fontsize=11, y=1.03)
 fig.tight_layout()
 fig.savefig(f"{OUT}/fig2_sparsity_sweep.pdf", bbox_inches="tight")
 fig.savefig(f"{OUT}/fig2_sparsity_sweep.png", bbox_inches="tight")
@@ -154,34 +217,60 @@ print("  → fig2_sparsity_sweep saved.")
 # ═══════════════════════════════════════════════════════════════════════════════
 print("Generating Figure 3: λ_health sensitivity …")
 
-lambda_keys = sorted(
-    [k for k in raw if k.startswith("C_lambda_")],
-    key=lambda k: float(k.split("_lambda_")[1].split("/")[0])
-)
-lambda_vals = [float(k.split("_lambda_")[1].split("/")[0]) for k in lambda_keys]
+# EXP-C-Full: NutriGraphNet at full parameters (paper Table C-Full).
+# The previous version of this figure plotted the control's flat lambda sweep
+# under the title "HFRS-DA shows zero sensitivity" -- a claim the paper has
+# since withdrawn (see 4.1 attribution note). It now shows what the paper
+# actually argues: the health objective is live and its trade-off is tunable.
+LAMS = ["0.0", "0.001", "0.005", "0.01", "0.05", "0.1", "0.5", "1.0"]
+lambda_vals = [float(l) for l in LAMS]
+x_plot = [max(v, 5e-4) for v in lambda_vals]   # lambda=0 pinned for the log axis
 
-fig, axes = plt.subplots(1, 2, figsize=(10, 4))
+hr_l   = [gpu_lambda(l, "HR@10")[0]         for l in LAMS]
+hr_sd  = [gpu_lambda(l, "HR@10")[1]         for l in LAMS]
+hg_l   = [gpu_lambda(l, "HealthGain@10")[0] for l in LAMS]
 
-for ax, metric, color in zip(axes,
-                              ["HR@10", "AUC"],
-                              ["#76B7B2", "#59A14F"]):
-    vals = [raw[k][metric] for k in lambda_keys]
-    ax.semilogx([max(v, 1e-4) for v in lambda_vals], vals,
-                "s-", color=color, lw=2.2, ms=7,
-                markerfacecolor="white", markeredgewidth=2)
-    ax.set_xlabel("λ_health (log scale)")
-    ax.set_ylabel(metric)
-    ax.set_title(f"({'a' if metric=='HR@10' else 'b'}) HFRS-DA — {metric}")
-    # annotate variance
-    spread = max(vals) - min(vals)
-    ax.text(0.05, 0.05,
-            f"Δ = {spread:.6f}\n(effectively flat)",
-            transform=ax.transAxes, fontsize=9,
-            color="gray", va="bottom",
-            bbox=dict(boxstyle="round,pad=0.3", fc="white", ec="gray", alpha=0.7))
+fig, axes = plt.subplots(1, 2, figsize=(11, 4.2))
 
-fig.suptitle("Figure 3. Health Constraint Sensitivity (λ_health Sweep)\n"
-             "HFRS-DA shows zero sensitivity across 4 orders of magnitude", fontsize=11, y=1.01)
+PLATEAU = (8e-4, 0.12)   # lambda in [0.001, 0.1]
+
+ax = axes[0]
+ax.axvspan(*PLATEAU, alpha=0.09, color=MODEL_COLOR["full"], zorder=0)
+ax.errorbar(x_plot, hr_l, yerr=hr_sd, fmt="P-", color=MODEL_COLOR["full"],
+            lw=2.2, ms=8, markerfacecolor="white", markeredgewidth=2,
+            ecolor="#888888", elinewidth=1.1, capsize=3, zorder=3)
+ax.set_xscale("log")
+ax.set_xlabel(r"$\lambda_{health}$ (log scale; $\lambda$=0 plotted at left edge)")
+ax.set_ylabel("HR@10")
+ax.set_ylim(0.45, 0.85)
+ax.set_title("(a) Ranking — plateau, then a real cost")
+ax.text(0.028, 0.79, "robust plateau\nΔ within fold noise", fontsize=8,
+        ha="center", color=MODEL_COLOR["full"])
+ax.annotate("−19.6% at λ=0.5", xy=(0.5, hr_l[6]), xytext=(0.055, 0.52),
+            fontsize=8, arrowprops=dict(arrowstyle="->", lw=1.2))
+
+ax = axes[1]
+ax.axvspan(*PLATEAU, alpha=0.09, color=MODEL_COLOR["full"], zorder=0)
+ax.axhline(0, color="#888888", lw=1.2, zorder=1)
+ax.plot(x_plot, hg_l, "P-", color=MODEL_COLOR["full"], lw=2.2, ms=8,
+        markerfacecolor="white", markeredgewidth=2, zorder=3)
+ax.set_xscale("log")
+ax.set_xlabel(r"$\lambda_{health}$ (log scale)")
+ax.set_ylabel("HealthGain@10")
+ax.set_ylim(-0.0132, 0.0016)   # headroom so the plateau label clears the axis
+ax.set_title("(b) Health signal — live at every λ, contracting when λ dominates")
+# Upper-left is empty (the curve hugs the floor until λ=0.1), so the plateau
+# label goes there rather than under the lowest point where it met the axis.
+ax.text(0.0022, -0.0053, "non-zero across\n4 orders of magnitude", fontsize=8,
+        ha="center", color=MODEL_COLOR["full"])
+ax.annotate("→ 0 as ranking is\ntraded away", xy=(1.0, hg_l[7]),
+            xytext=(0.075, -0.0033), fontsize=8,
+            arrowprops=dict(arrowstyle="->", lw=1.2))
+
+fig.suptitle("Figure 3. The Health Objective Is Routed and Tunable (λ_health Sweep, NutriGraphNet)\n"
+             "GPU 5-fold CV, full parameters. The topology-blind control registers Δ HR@10 = 0.000 "
+             "exactly across this range — by construction, not by defect.",
+             fontsize=11, y=1.03)
 fig.tight_layout()
 fig.savefig(f"{OUT}/fig3_lambda_sensitivity.pdf", bbox_inches="tight")
 fig.savefig(f"{OUT}/fig3_lambda_sensitivity.png", bbox_inches="tight")
@@ -321,56 +410,66 @@ print("  → fig5_graph_ablation saved.")
 # ═══════════════════════════════════════════════════════════════════════════════
 print("Generating Figure 6: AUC vs HR@10 paradox …")
 
-# EXP-B 100pct has mf/lightgcn/ngcf/sgl; hfrsda comes from D_dim_64 (full data)
-models_B4  = ["mf", "lightgcn", "ngcf", "sgl"]
-models_full = ["mf", "lightgcn", "ngcf", "sgl", "hfrsda"]
+# All six models at 100% density, sourced from results/gpu to match Table 1.
+models_full = ["mf", "lightgcn", "ngcf", "sgl", "hfrsda", "full"]
 
 def get_score(model, metric):
-    if model == "hfrsda":
-        return raw[f"D_dim_64/hfrsda"][metric]   # full-data reference
-    return raw[f"B_sparsity_100pct/{model}"][metric]
+    met = "auc" if metric == "AUC" else metric
+    return gpu_sparsity(100, model, met)[0]
 
-auc_full  = [get_score(m, "AUC")    for m in models_full]
-hr_full   = [get_score(m, "HR@10")  for m in models_full]
+auc_full  = [get_score(m, "AUC")     for m in models_full]
+hr_full   = [get_score(m, "HR@10")   for m in models_full]
 ndcg_full = [get_score(m, "NDCG@10") for m in models_full]
 
-fig, axes = plt.subplots(1, 2, figsize=(11, 4.5))
+# Short forms: the full legend names collide at these point positions and as
+# axis ticks. Identity still never rests on colour -- every mark is labelled.
+SHORT = {"mf": "MF", "lightgcn": "LightGCN", "ngcf": "NGCF", "sgl": "SGL",
+         "hfrsda": "DualAttn-TB", "full": "NutriGraphNet"}
+# DualAttn-TB (0.855, 0.734) and NutriGraphNet (0.860, 0.729) nearly coincide,
+# so offsets are hand-set rather than uniform.
+OFFSET = {"mf": (8, -4), "lightgcn": (-14, -15), "ngcf": (8, 2),
+          "sgl": (8, 2), "hfrsda": (-30, 11), "full": (10, -13)}
+
+fig, axes = plt.subplots(1, 2, figsize=(12, 4.5))
 
 # scatter AUC vs HR@10
 ax = axes[0]
 for m, a, h in zip(models_full, auc_full, hr_full):
-    ax.scatter(a, h, s=130, color=MODEL_COLOR[m], zorder=5,
-               edgecolors="white", linewidths=1.5)
-    ax.annotate(MODEL_LABEL[m], (a, h), textcoords="offset points",
-                xytext=(6, 4), fontsize=9)
+    ax.scatter(a, h, s=130, color=MODEL_COLOR[m], marker=MODEL_MARKER[m],
+               zorder=5, edgecolors="white", linewidths=1.5)
+    ax.annotate(SHORT[m], (a, h), textcoords="offset points",
+                xytext=OFFSET[m], fontsize=8.5, color=MODEL_COLOR[m], zorder=6)
 ax.set_xlabel("AUC (Classification)")
 ax.set_ylabel("HR@10 (Ranking)")
-ax.set_title("(a) AUC vs. HR@10 — Score Paradox")
-# add inverse trend line hint
-ax.text(0.05, 0.95,
-        "High AUC ≠ High HR@10\n(MF paradox)",
-        transform=ax.transAxes, fontsize=9, va="top",
-        bbox=dict(boxstyle="round,pad=0.3", fc="#FFF3E0", ec="#FFB74D", alpha=0.9))
+ax.set_xlim(0.50, 0.94)
+ax.set_ylim(0.30, 0.85)
+ax.set_title("(a) AUC vs. HR@10 — the two do not agree")
+# Mid-left is the only region clear of every mark (SGL sits at 0.699/0.358,
+# which the previous bottom-left placement covered).
+ax.text(0.03, 0.46,
+        "MF: lowest AUC (0.547), highest HR@10 (0.760)\n"
+        "SGL: mid AUC (0.699), collapsed HR@10 (0.358)",
+        transform=ax.transAxes, fontsize=8, va="center",
+        bbox=dict(boxstyle="round,pad=0.35", fc="#f6f6f4", ec="#c9c9c2", alpha=0.95))
 
 # bar chart: 3 metrics side by side for full data
 ax = axes[1]
 met_names = ["AUC", "HR@10", "NDCG@10"]
-met_data  = {
-    "AUC":    auc_full,
-    "HR@10":  hr_full,
-    "NDCG@10":ndcg_full,
-}
+met_data  = {"AUC": auc_full, "HR@10": hr_full, "NDCG@10": ndcg_full}
 x2 = np.arange(len(models_full))
-w2 = 0.25
-colors_m = ["#4E79A7", "#E15759", "#F28E2B"]
+w2 = 0.26
+# Validated categorical slots (blue/green/magenta); colour encodes the metric
+# here, not the model, so reuse of the model hues carries no cross-panel meaning.
+colors_m = ["#2a78d6", "#008300", "#e87ba4"]
 for i, (met, col) in enumerate(zip(met_names, colors_m)):
     ax.bar(x2 + (i-1)*w2, met_data[met], w2, label=met,
-           color=col, edgecolor="white", alpha=0.85)
+           color=col, edgecolor="white", linewidth=1.2)
 ax.set_xticks(x2)
-ax.set_xticklabels([MODEL_LABEL[m] for m in models_full])
+ax.set_xticklabels([SHORT[m] for m in models_full], rotation=20, ha="right",
+                   fontsize=8.5)
 ax.set_ylabel("Score")
-ax.set_ylim(0, 1.05)
-ax.legend()
+ax.set_ylim(0, 1.0)
+ax.legend(fontsize=8, ncol=3, loc="upper center")
 ax.set_title("(b) Full-Data Metric Profile per Model")
 
 fig.suptitle("Figure 6. The AUC–Ranking Paradox in Sparse Nutrition Graphs",
@@ -394,23 +493,32 @@ ndcg_aug = [raw[k]["NDCG@10"] for k in aug_keys]
 print(f"\n[EXP-A] SGL Aug Ratio Sweep:")
 print(f"  HR@10:   {hr_aug[0]:.4f} (p=0.0) → {hr_aug[-1]:.4f} (p=0.5)  Δ={hr_aug[0]-hr_aug[-1]:+.4f}")
 print(f"  NDCG@10: {ndcg_aug[0]:.4f} (p=0.0) → {ndcg_aug[-1]:.4f} (p=0.5)  Δ={ndcg_aug[0]-ndcg_aug[-1]:+.4f}")
-print(f"  Best at p=0.0 → augmentation consistently HURTS ranking")
+print(f"  Δ={hr_aug[0]-hr_aug[-1]:+.4f} is within the measured run-to-run floor (~0.005)")
+print(f"  → NO augmentation-ratio effect is resolvable here (paper 8.4)")
 
-# B: SGL collapse
-sgl_hrs = [raw[f"B_sparsity_{sparsity_map[p]}/sgl"]["HR@10"] for p in x_pcts]
-mf_hrs  = [raw[f"B_sparsity_{sparsity_map[p]}/mf"]["HR@10"]  for p in x_pcts]
-print(f"\n[EXP-B] Sparsity Sweep (HR@10):")
-print(f"  SGL:  {sgl_hrs}")
-print(f"  MF:   {mf_hrs}")
-print(f"  SGL@10%={sgl_hrs[0]:.3f} vs MF@10%={mf_hrs[0]:.3f}  → SGL collapses {sgl_hrs[0]/mf_hrs[0]:.2f}x worse")
+# B: sparsity sweep (results/gpu -- matches paper Table B)
+print(f"\n[EXP-B] Sparsity Sweep (HR@10, results/gpu):")
+for m in models_B:
+    vals = data_B[m]["HR@10"]
+    print(f"  {MODEL_LABEL[m]:24s} " + "  ".join(f"{v:.3f}" for v in vals))
+ngn, ngcf_v, ctl, sgl_v = (data_B[k]["HR@10"] for k in ("full", "ngcf", "hfrsda", "sgl"))
+print(f"  → at 10%: NutriGraphNet {ngn[0]:.3f} vs NGCF {ngcf_v[0]:.3f} "
+      f"({100*(ngn[0]-ngcf_v[0])/ngcf_v[0]:+.1f}%), vs control {ctl[0]:.3f} "
+      f"({100*(ngn[0]-ctl[0])/ctl[0]:+.1f}%), vs SGL {sgl_v[0]:.3f} ({ngn[0]/sgl_v[0]:.2f}x)")
+print(f"  → density-invariance: {ngn[0]:.3f} → {ngn[-1]:.3f} (ratio {ngn[-1]/ngn[0]:.2f}x); "
+      f"NGCF needs full data to reach {ngcf_v[-1]:.3f}, i.e. NutriGraphNet gets "
+      f"{100*ngn[0]/ngcf_v[-1]:.1f}% of it on 10% of interactions")
 
-# C: lambda flat
-c_hr = [raw[k]["HR@10"] for k in lambda_keys]
-c_auc = [raw[k]["AUC"] for k in lambda_keys]
-print(f"\n[EXP-C] λ_health Sensitivity:")
-print(f"  HR@10 range: {min(c_hr):.6f} – {max(c_hr):.6f}  (Δ={max(c_hr)-min(c_hr):.2e})")
-print(f"  AUC   range: {min(c_auc):.6f} – {max(c_auc):.6f}  (Δ={max(c_auc)-min(c_auc):.2e})")
-print(f"  → Health constraint has ZERO measurable effect (gradient vanishes)")
+# C: lambda sweep (NutriGraphNet, full parameters -- paper Table C-Full)
+plateau = [gpu_lambda(l, "HR@10")[0] for l in ["0.001", "0.005", "0.01", "0.05", "0.1"]]
+pm = sum(plateau) / len(plateau)
+print(f"\n[EXP-C-Full] λ_health Sensitivity (NutriGraphNet, full params):")
+print(f"  HR@10 plateau λ∈[0.001,0.1]: {min(plateau):.4f}–{max(plateau):.4f} (mean {pm:.4f})")
+for l in ["0.5", "1.0"]:
+    h = gpu_lambda(l, "HR@10")[0]
+    print(f"  λ={l}: HR@10={h:.4f} ({100*(h-pm)/pm:+.1f}% vs plateau)  "
+          f"HealthGain@10={gpu_lambda(l, 'HealthGain@10')[0]:+.5f}")
+print(f"  → health objective live at every λ; trade-off becomes functional at λ≥0.5")
 
 # D: dim sensitivity
 mf_hr_d   = data_D["mf"]["HR@10"]
