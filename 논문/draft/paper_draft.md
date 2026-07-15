@@ -4,7 +4,7 @@
 
 **Authors:** Heejeong [Last Name]  
 **Target Venue:** Computers in Biology and Medicine (IF: 7.7) / Nutrients (IF: 5.9)  
-**Status:** Draft v2.0 — 2026-07-16 (**전면 재프레이밍**. 제목 교체: 증강 논지가 v1.3에서 철회되어 기존 제목("Why Graph Augmentation Fails")이 본문과 모순 상태였음 → "Auxiliary Nutritional Structure Substitutes for Interaction Data"로 변경, 발견 중심 프레임. **HFRS-DA 주장 전면 철회**: 기존 EXP-F/C의 "HFRS-DA는 구조적으로 고장났다" 주장은 자체 단순화 재구현(코드 docstring이 "Simplified re-implementation"이라 명시)에 근거했고 원저자 공식 구현이 공개돼 있어 방어 불가였음. 해당 모델을 **DualAttn-TB(자체 설계 topology-blind 대조군)**로 재정의 — 남의 논문 반박이 아니라 우리 모델의 그래프 사용 입증 도구가 되어 논지가 오히려 강화됨. Δ=0.000은 결함이 아니라 대조군의 설계된 성질이자 ablation 하네스 검증. §4.1에 귀속 고지 신설. Abstract/Contribution/Introduction/Research Gap/Conclusion(4) 전면 재작성 — 두 축(보조구조가 상호작용 대체 / 건강은 gradient 라우팅 문제) 중심. **§7.3 신설**: v2 vs v3 아키텍처-밀도 교차(v3는 100%에서 NDCG +19.5%지만 10%에서 −12.6%) — v2를 논문 본체로 확정. **§8 Limitations 신설**: 측정 함정 2건(HealthGain 저밀도 무효, 재현성 노이즈 바닥) 자진 보고 + health-aware 베이스라인 부재/단일 데이터셋/AUC 미해결 명시. Conclusion은 §9로 이동. v1.3: EXP-B 오표기 수정 — Table B의 "NutriGraphNet" 열이 실제로는 hfrsda 데이터였음; 실측 결과 진짜 NutriGraphNet이 더 우수(10% HR@10=0.738, NGCF 대비 +45.0%, 밀도 불변 0.99×).)
+**Status:** Draft v2.0 — 2026-07-16 (**전면 재프레이밍**. 제목 교체: 증강 논지가 v1.3에서 철회되어 기존 제목("Why Graph Augmentation Fails")이 본문과 모순 상태였음 → "Auxiliary Nutritional Structure Substitutes for Interaction Data"로 변경, 발견 중심 프레임. **HFRS-DA 주장 전면 철회**: 기존 EXP-F/C의 "HFRS-DA는 구조적으로 고장났다" 주장은 자체 단순화 재구현(코드 docstring이 "Simplified re-implementation"이라 명시)에 근거했고 원저자 공식 구현이 공개돼 있어 방어 불가였음. 해당 모델을 **DualAttn-TB(자체 설계 topology-blind 대조군)**로 재정의 — 남의 논문 반박이 아니라 우리 모델의 그래프 사용 입증 도구가 되어 논지가 오히려 강화됨. Δ=0.000은 결함이 아니라 대조군의 설계된 성질이자 ablation 하네스 검증. §4.1에 귀속 고지 신설. Abstract/Contribution/Introduction/Research Gap/Conclusion(4) 전면 재작성 — 두 축(보조구조가 상호작용 대체 / 건강은 gradient 라우팅 문제) 중심. **§8.4 신설**: v2 vs v3 아키텍처-밀도 교차(v3는 100%에서 NDCG +19.5%지만 10%에서 −12.6%) — v2를 논문 본체로 확정. **§11 Limitations 신설**: 측정 함정 2건(HealthGain 저밀도 무효, 재현성 노이즈 바닥) 자진 보고 + health-aware 베이스라인 부재/단일 데이터셋/AUC 미해결 명시. Conclusion은 §12로 이동. v1.3: EXP-B 오표기 수정 — Table B의 "NutriGraphNet" 열이 실제로는 hfrsda 데이터였음; 실측 결과 진짜 NutriGraphNet이 더 우수(10% HR@10=0.738, NGCF 대비 +45.0%, 밀도 불변 0.99×).)
 
 ---
 
@@ -52,7 +52,7 @@ This suggests a hypothesis that inverts the usual framing. Rather than asking ho
 
 5. **[Finding: health constraints must be architecturally routed]** Across four orders of magnitude of λ_health, HealthGain@10 stays non-zero (≈−0.010) with a robust plateau over λ∈[0.001, 0.1]. Under full parameters the trade-off is functional rather than nominal: at λ≥0.5 HealthGain contracts toward zero while HR@10 falls 19.6–27.3%, showing the objective genuinely reshapes rankings once capacity permits. We recommend λ=0.01.
 
-6. **[Negative results and methodological cautions]** We report what did not hold, including against our own earlier framing. SGL collapses at low density (HR@10=0.088 at 10%) but *not* because of augmentation — with augmentation off it still trails NGCF 2.18×, and the dropout sweep moves HR@10 by only 0.008, within our measured noise floor. Architecture choices do not transfer across density: a rank-calibrated decoder gains 19.5% NDCG@10 at full density yet loses 12.6% HR@10 at 10%. We further document two measurement pitfalls that silently manufacture false conclusions in sparsity studies of health-aware recommenders (§8.3, §8.4).
+6. **[Negative results and methodological cautions]** We report what did not hold, including against our own earlier framing. SGL collapses at low density (HR@10=0.088 at 10%) but *not* because of augmentation — with augmentation off it still trails NGCF 2.18×, and the dropout sweep moves HR@10 by only 0.008, within our measured noise floor. Architecture choices do not transfer across density: a rank-calibrated decoder gains 19.5% NDCG@10 at full density yet loses 12.6% HR@10 at 10%. We further document two measurement pitfalls that silently manufacture false conclusions in sparsity studies of health-aware recommenders (§11.3, §11.4).
 
 ## 2. Related Work
 
@@ -76,9 +76,9 @@ The landscape of GNN-based recommendation has been shaped by three successive pa
 
 Two gaps motivate this work.
 
-**Density.** The graph recommenders above were developed and validated on benchmarks with hundreds of interactions per user. Health-aware food recommendation is deployed where that assumption fails hardest — clinical cohorts and dietary surveys yield roughly a dozen events per participant. Whether conclusions drawn at MovieLens density transfer to 0.040% density is untested, and our results indicate they do not: model rankings reverse (§6.2), and even architecture choices reverse (§7.3).
+**Density.** The graph recommenders above were developed and validated on benchmarks with hundreds of interactions per user. Health-aware food recommendation is deployed where that assumption fails hardest — clinical cohorts and dietary surveys yield roughly a dozen events per participant. Whether conclusions drawn at MovieLens density transfer to 0.040% density is untested, and our results indicate they do not: model rankings reverse (§6.1), and even architecture choices reverse (§8.4).
 
-**Evidence of graph use.** Heterogeneous food recommenders are motivated by the claim that nutritional structure carries signal, but that claim is rarely tested by ablating the structure and observing the consequence. Reporting a model as "graph-based" describes its inputs, not its computation. We show that a topology-blind model with matched capacity is competitive on this graph (§6.6), which means graph consumption must be demonstrated rather than assumed — and that demonstrating it requires a control that provably consumes nothing.
+**Evidence of graph use.** Heterogeneous food recommenders are motivated by the claim that nutritional structure carries signal, but that claim is rarely tested by ablating the structure and observing the consequence. Reporting a model as "graph-based" describes its inputs, not its computation. We show that a topology-blind model with matched capacity is competitive on this graph (§6.2), which means graph consumption must be demonstrated rather than assumed — and that demonstrating it requires a control that provably consumes nothing.
 
 ## 3. Dataset: NutriGraph-KR
 
@@ -184,42 +184,15 @@ This control serves two purposes. First, it **isolates the contribution of graph
 
 4. **The topology-blind control is competitive:** DualAttn-TB (AUC=0.8551, HR@10=0.7340, NDCG@10=0.5977) exceeds NGCF on NDCG@10 (+0.041) and MRR (+0.072) while falling 6.2% behind on HR@10 (0.7340 vs. 0.7844) — achieved without reading a single auxiliary edge (EXP-F). Its ranking quality comes entirely from embedding lookup and attention over the interaction matrix. That a graph-blind model places this well is itself a result: on this data, graph propagation must earn its cost rather than be assumed to pay.
 
-5. **NGCF leads on HR-focused ranking at full density:** NGCF achieves the highest HR@10=0.7844 and HR@20=0.8460 among all models when all interactions are available. Together with EXP-B showing NutriGraphNet dominates at low density (HR@10=0.738 at 10%, +45.0% over NGCF, which reaches only 0.509 there), this motivates a density-conditioned model selection strategy (see Section 7): the ranking reverses at roughly 50% density.
+5. **NGCF leads on HR-focused ranking at full density:** NGCF achieves the highest HR@10=0.7844 and HR@20=0.8460 among all models when all interactions are available. Together with EXP-B showing NutriGraphNet dominates at low density (HR@10=0.738 at 10%, +45.0% over NGCF, which reaches only 0.509 there), this motivates a density-conditioned model selection strategy (see Section 10): the ranking reverses at roughly 50% density.
 
 ---
 
-## 6. Analysis
+## 6. Auxiliary Structure Substitutes for Interaction Data
 
-### 6.1 EXP-A: SGL Augmentation Ratio Sensitivity
+This section establishes the paper's first claim in two steps: the sparsity sweep shows *that* NutriGraphNet's advantage concentrates where interactions are scarce (§6.1), and the topology ablation shows *why* — that the advantage comes from consuming auxiliary structure rather than from capacity (§6.1).
 
-**Hypothesis:** Edge dropout destroys the sparse semantically-coherent user-food interaction structure, collapsing contrastive views.
-
-We vary SGL's edge dropout ratio p ∈ {0.0, 0.1, 0.2, 0.3, 0.4, 0.5} on the full dataset under GPU 5-fold CV (hidden=128, out=64, layers=3, heads=4).
-
-**Table A. SGL Performance vs. Augmentation Ratio p (GPU 5-fold CV)**
-
-| p | AUC | F1 | HR@10 | NDCG@10 | MRR |
-|---|-----|-----|-------|---------|-----|
-| **0.0** | **0.7001** | **0.6617** | **0.3604** | **0.2336** | **0.2152** |
-| 0.1 | 0.6989 | 0.6598 | 0.3576 | 0.2283 | 0.2089 |
-| 0.2 | 0.6979 | 0.6593 | 0.3564 | 0.2264 | 0.2067 |
-| 0.3 | 0.6975 | 0.6594 | 0.3600 | 0.2267 | 0.2058 |
-| 0.4 | 0.6975 | 0.6596 | 0.3576 | 0.2268 | 0.2069 |
-| 0.5 | 0.6983 | **0.6604** | 0.3520 | **0.2288** | 0.2116 |
-
-*(GPU 5-fold CV confirmed; HR@10 step differences: −0.0028, −0.0012, +0.0036, −0.0024, −0.0056)*
-
-**Finding A1 — Augmentation Is Always Harmful.** Under GPU 5-fold CV, the best HR@10 and MRR are confirmed at **p=0.0** (no augmentation). HR@10=0.3604 at p=0.0 declines to 0.3520 at p=0.5 (Δ=−0.0084, −2.3% relative). NDCG@10 worst point is p=0.2 (0.2264, −3.1% vs. p=0.0). The monotonic decline across all 6 augmentation levels establishes that SGL's contrastive objective is **never beneficial** on NutriGraph-KR regardless of dropout intensity. Notably, F1 at p=0.5 (0.6604) slightly exceeds p=0.1–0.4 due to regularization effects on the classification head, but HR@10 and NDCG@10 — the primary ranking metrics — are unambiguously best at p=0.0.
-
-**Finding A2 — AUC Decoupling.** AUC declines more slowly (0.7001→0.6975 at p=0.3–0.4) than ranking metrics. Classification-level representation quality is less sensitive to augmentation collapse than ranking-level ordering, consistent with AUC measuring pair-wise score ordering rather than absolute score magnitude.
-
-**Finding A3 — Non-Monotone Micro-Fluctuation.** The step difference at p=0.3 is +0.0036 (slight recovery), creating a local minimum at p=0.2. This non-monotone behavior is consistent with stochastic variance in the training process rather than a genuine beneficial effect of moderate augmentation.
-
-**Theoretical Explanation.** In MovieLens-1M (avg **165 interactions/user**, density 0.4%), removing 10% of edges still leaves ~149 interactions per user — ample for non-degenerate contrastive views. In NutriGraph-KR (avg **12.6 interactions/user**, density 0.040%), a 10% dropout removes only **1.26 interactions** per user. With 2–3 positive interactions remaining in the augmented view, the InfoNCE loss cannot distinguish true user preferences from noise; augmented views become nearly indistinguishable from random negative samples, collapsing the contrastive gradient signal.
-
----
-
-### 6.2 EXP-B: Data Sparsity Analysis
+### 6.1 EXP-B: Data Sparsity Analysis
 
 We subsample the user-food interaction set to {10%, 30%, 50%, 70%, 100%} and evaluate all six models — four published baselines, our topology-blind control, and **NutriGraphNet** — under GPU 5-fold cross-validation with identical full parameters (hidden=128, out=64, layers=3, heads=4, seed=42, λ_health=0.01). Subsampling is seeded, so every model at a given density sees the exact same interaction subset. Note that only the user-food `eats`/`healthness` edges are subsampled; the auxiliary graph (ingredient, food-similar, time) remains intact at every density. This is deliberate — it isolates the question of interest, namely how much auxiliary structure can compensate when interaction data is scarce.
 
@@ -277,7 +250,7 @@ At 10% density NutriGraphNet already attains **94.1%** of the best full-data sco
 
 **Finding B5 — MF Structural AUC Ceiling.** MF's AUC is structurally capped at ~0.547 regardless of density (range 0.514–0.547) while GNN AUC scales (NGCF: 0.764→0.878). Yet MF achieves HR@10=0.760 at full density, exceeding NutriGraphNet (0.729) on hit rate despite a 0.31 AUC deficit — AUC and top-K ranking capture fundamentally different aspects of model quality (see EXP-D).
 
-**Finding B6 — Ranking Quality Is Not Uniform Across Metrics.** NutriGraphNet's advantage is confined to HR@10 and AUC; on NDCG@10 it trails DualAttn-TB at every density (0.508 vs. 0.542 at 10%; 0.411 vs. 0.598 at 100%) and trails MF at full density (0.618). NutriGraphNet retrieves relevant foods into the top-10 more reliably than any baseline at low density, but orders them less well once retrieved. Section 6.4 and the v2 decoder analysis attribute this to the HybridDecoder's rank calibration rather than to health regularization — at λ_health=0.0 (health loss fully disabled) NDCG@10 is 0.4032, *below* the λ=0.005 value of 0.4279, so the health objective is not the cause.
+**Finding B6 — Ranking Quality Is Not Uniform Across Metrics.** NutriGraphNet's advantage is confined to HR@10 and AUC; on NDCG@10 it trails DualAttn-TB at every density (0.508 vs. 0.542 at 10%; 0.411 vs. 0.598 at 100%) and trails MF at full density (0.618). NutriGraphNet retrieves relevant foods into the top-10 more reliably than any baseline at low density, but orders them less well once retrieved. Section 8.1 and the v2 decoder analysis attribute this to the HybridDecoder's rank calibration rather than to health regularization — at λ_health=0.0 (health loss fully disabled) NDCG@10 is 0.4032, *below* the λ=0.005 value of 0.4279, so the health objective is not the cause.
 
 **Finding B7 — SGL Threshold Effect.** Below 50% density (≈6.3 interactions/user), SGL falls dramatically below every other model. For datasets under 50% interaction density the practical recommendation is NutriGraphNet (leverages auxiliary structure) or LightGCN (robust propagation), and to avoid SGL entirely.
 
@@ -285,150 +258,9 @@ At 10% density NutriGraphNet already attains **94.1%** of the best full-data sco
 
 ---
 
-### 6.3 EXP-C: Health Constraint λ_health Sensitivity
+### 6.2 EXP-F: Graph Component Ablation — Does NutriGraphNet Actually Consume Its Topology?
 
-**Hypothesis:** If health loss gradients properly backpropagate through model parameters, varying λ_health should change both health alignment (measurable via HealthGain@K) and ranking quality (HR@10). We test this hypothesis on two architectures: **NutriGraphNet** (routes message-passing through all 9 edge types, including `healthness`) and **DualAttn-TB** (dual-attention architecture, serving as an ablation baseline).
-
-We vary λ_health ∈ {0.0, 0.001, 0.005, 0.01, 0.05, 0.1, 0.5, 1.0} under **3-seed evaluation** (seeds 123, 777; see Note below) with lightweight parameters (hidden=64, out=32, num_layers=1, heads=2) matching the 1-fold experimental setup for consistency with prior EXP-C runs.
-
-**Note on seed=42:** seed=42 exhibits early convergence failure across all λ values (AUC≈0.55, early stop at epoch 23), attributable to an unfavorable random data split. All results below exclude seed=42 and report 2-seed mean over seeds {123, 777}.
-
-**Table C. NutriGraphNet Performance vs. λ_health (2-seed mean, seeds 123+777)**
-
-| λ_health | AUC | HR@10 | NDCG@10 | MRR | HealthGain@10 |
-|---------|--------|--------|---------|--------|---------------|
-| 0.000 | 0.8548 | 0.7400 | 0.5124 | 0.4496 | −0.00900 |
-| 0.001 | 0.8549 | 0.7400 | 0.5128 | 0.4501 | −0.00900 |
-| 0.005 | 0.8546 | 0.7410 | 0.5060 | 0.4408 | −0.00920 |
-| 0.010 | 0.8550 | 0.7390 | 0.5130 | 0.4508 | −0.00895 |
-| 0.050 | 0.8556 | 0.7390 | 0.5110 | 0.4480 | −0.00910 |
-| **0.100** | 0.8519 | **0.7430** | **0.5129** | **0.4489** | −0.00935 |
-| 0.500 | 0.8370 ↓ | 0.7350 | 0.5032 | 0.4395 | −0.00940 |
-| 1.000 | 0.8427 | 0.7360 | 0.4935 ↓ | 0.4264 ↓ | −0.00930 |
-
-*(2-seed mean, seeds={123,777}; lightweight params: hidden=64, out=32, num_layers=1, heads=2)*
-
-**Table C-Control (Reference). DualAttn-TB Performance vs. λ_health (identical by construction — the control's health branch cannot reach graph structure)**
-
-| λ_health | AUC | F1 | HR@10 | NDCG@10 | MRR | HealthGain@10 |
-|---------|--------|--------|--------|---------|--------|---------------|
-| 0.000–1.000 | 0.8551 | 0.7200 | 0.7340 | 0.5977 | 0.5635 | ≈ 0 (all λ) |
-
-*(Δ HR@10 = 0.0000 exactly; Δ AUC < 1.25×10⁻⁷ for all λ ∈ [0.001, 1.0]. Reported for architectural contrast only.)*
-
-**Finding C1 — NutriGraphNet Is Robust to λ in [0.001, 0.1].** Across the practical range λ ∈ {0.001, 0.005, 0.01, 0.05, 0.1}, HR@10 varies by only **Δ=0.0040** (0.7390–0.7430) — within measurement noise. This **robust plateau** demonstrates that NutriGraphNet's ranking quality is insensitive to the exact health constraint weight, making deployment straightforward: any λ in this range is safe. The result revises the earlier CPU 1-fold finding (which suggested λ=0.5 as optimal); under multi-seed evaluation with proper convergence control, no single λ is decisively better than others in the plateau.
-
-**Finding C2 — HealthGain@10 Is Consistently Non-Zero Across All λ.** HealthGain@10 is negative and stable across λ ∈ {0.0, 0.001, ..., 1.0} (range: −0.00895 to −0.00940 in the plateau, −0.00930 at λ=1.0). Three observations are critical: *(i)* **non-zero at λ=0.0** (−0.009) — baseline health-gradient signal exists from the architecture itself; *(ii)* **magnitude stable** across the plateau, indicating health regularization does not meaningfully alter the health-alignment direction; *(iii)* **active at large λ** (−0.0094 at λ=0.5) — even at high health weights, the model maintains gradient flow. This contrasts sharply with DualAttn-TB's structurally zero HealthGain, confirming NutriGraphNet's architectural health gradient routing is functional across the full λ range.
-
-**Finding C3 — Health–Ranking Degradation at λ≥0.5 Is Moderate *under Lightweight Parameters*.** Above λ=0.1, ranking metrics show mild degradation in this setting: HR@10 drops from 0.7430 (λ=0.1) to 0.7350 (λ=0.5, −1.1%) and AUC from 0.8556 (λ=0.05) to 0.8370 (λ=0.5, −2.2%). This is substantially milder than the CPU 1-fold estimate (−29.7% at λ=1.0) — but the full-parameter confirmation (Table C-Full, Finding C5) shows the degradation severity is capacity-dependent: under full parameters HR@10 falls −19.6% at λ=0.5 and −27.3% at λ=1.0. The consistent picture across both regimes is that **NutriGraphNet tolerates moderate health regularization (λ≤0.1) without significant ranking cost**, while strong regularization (λ≥0.5) carries a real — and at full capacity, severe — ranking penalty. **Practical recommendation: λ=0.01 as default** — on the plateau in both regimes, conservative, and interpretable.
-
-**Finding C4 — NutriGraphNet Health Loss Is Active; DualAttn-TB Is Architecturally Severed.** For NutriGraphNet, HealthGain@10 is consistently non-zero (≈−0.009) across all λ, confirming that health gradients flow from the `healthness` edge convolution path through the NutriLoss objective. This is a qualitative departure from DualAttn-TB's structurally zero health gradient (Δ HR@10 = 0.000 exactly, Δ AUC < 1.25×10⁻⁷ across all λ), validating that NutriGraphNet's architectural design enables genuine health-aware optimization regardless of λ choice.
-
-**Full-Parameter Confirmation (EXP-C-Full: GPU 5-fold CV, hidden=128, out=64, layers=3, heads=4, seed 42).** To address the parameter-scale caveat, we additionally ran the identical λ sweep under the full-parameter GPU 5-fold protocol used in EXP-B/D/F/G.
-
-**Table C-Full. NutriGraphNet Performance vs. λ_health (GPU 5-fold CV, full parameters, seed 42)**
-
-| λ_health | AUC | HR@10 (±σ) | NDCG@10 | MRR | HealthGain@10 |
-|---------|--------|--------|---------|--------|---------------|
-| 0.000 | 0.8577 | 0.7116 (±0.0624) | 0.4032 | 0.3202 | −0.01083 |
-| 0.001 | 0.8606 | 0.7396 (±0.0201) | 0.4188 | 0.3289 | −0.01091 |
-| **0.005** | **0.8620** | **0.7484 (±0.0192)** | **0.4279** | **0.3378** | −0.01158 |
-| 0.010 | 0.8545 | 0.7308 (±0.0295) | 0.4176 | 0.3310 | −0.00999 |
-| 0.050 | 0.8508 | 0.6836 (±0.0884) | 0.3869 | 0.3091 | −0.00877 |
-| 0.100 | 0.8573 | 0.7176 (±0.0302) | 0.3953 | 0.3073 | −0.00911 |
-| 0.500 | 0.8387 ↓ | 0.5820 (±0.0481) ↓ | 0.2841 ↓ | 0.2138 ↓ | −0.00300 |
-| 1.000 | 0.8271 ↓ | 0.5260 (±0.0681) ↓ | 0.2700 ↓ | 0.2143 ↓ | −0.00190 |
-
-*(single seed=42; 5-fold mean. Unlike the lightweight setting, seed 42 converges normally here — AUC=0.83–0.86 at every λ — consistent with the convergence failure being specific to the lightweight/1-layer configuration.)*
-
-**Finding C5 — The Plateau Survives Full Parameters; the Degradation Does Not Stay Mild.** Two conclusions from Table C-Full: *(i)* **the λ-robust plateau holds qualitatively** — across λ ∈ [0.001, 0.1], HR@10 varies non-monotonically within 0.6836–0.7484 (Δ=0.0648), which is within fold-level noise (σ up to 0.088) and shows no systematic trend, confirming that no single λ in the practical range is decisively better; λ=0.005 is the nominal optimum (HR@10=0.7484, also the best AUC=0.8620). *(ii)* **Degradation at λ≥0.5 is severe under full parameters** — HR@10 falls to 0.5820 at λ=0.5 (−19.6% vs. plateau mean 0.7240) and 0.5260 at λ=1.0 (−27.3%), an order of magnitude larger than the lightweight-setting estimate (−1.1%) and close to the original CPU 1-fold observation (−29.7%). Notably, HealthGain@10 simultaneously shrinks toward zero (−0.0030 at λ=0.5, −0.0019 at λ=1.0 vs. ≈−0.011 on the plateau): at full capacity, strong health regularization actively pulls recommendations toward the population nutritional average — the health–ranking trade-off becomes *functional* rather than dormant. The degradation severity is therefore **capacity-dependent**: lightweight models lack the capacity for L_health to reshape rankings, while the full model trades ranking for health alignment exactly as the loss design intends. The practical recommendation is unchanged — **λ=0.01 remains a safe default** (on the plateau in both regimes) — but λ≥0.5 should be avoided in deployment unless health alignment is explicitly prioritized over ranking quality. A multi-seed replication of the full-parameter sweep remains future work.
-
-**Mechanism Analysis — Why NutriGraphNet Succeeds Where DualAttn-TB Fails.**
-
-**(a) Architectural health gradient path:** NutriGraphNet's DualChannelEncoder applies GATConv over all 9 edge types including `('user', 'healthness', 'food')`. The health constraint loss L_health is defined over food embeddings that are updated via message-passing along `healthness` edges. The NutriLoss gradient thus flows: L_health → food_emb (via healthness conv) → GATConv parameters — a **valid architectural path**. In contrast, DualAttn-TB's NLA/SLA branches use direct embedding lookup and interaction-matrix attention only; `healthness` edges are never consumed in forward propagation, severing the gradient path entirely.
-
-**(b) Lightweight vs. full-parameter behavior:** The multi-seed sweep (Table C) uses lightweight parameters (hidden=64, out=32, layers=1, heads=2) for consistency with prior EXP-C runs; the full-parameter GPU 5-fold sweep (Table C-Full) confirms the plateau qualitatively while revealing that the λ≥0.5 degradation — mild under lightweight parameters (−1.1%) — becomes severe at full capacity (−19.6%/−27.3%), with HealthGain@10 simultaneously moving toward zero. See Finding C5 for the capacity-dependence interpretation.
-
-**Practical Implication.** NutriGraphNet provides **architecturally guaranteed health-gradient routing** with **λ=0.01 as the recommended default** (robust plateau, no ranking cost, conservative health weight). For clinical practitioners: *(i)* health-aware recommendation is achievable with proper architectural routing regardless of exact λ; *(ii)* DualAttn-TB's named health constraint provides zero guarantee without architectural remediation; *(iii)* λ sensitivity analysis should always include HealthGain@K verification — non-zero HealthGain is the only reliable indicator of active health optimization.
-
----
-
-### 6.4 EXP-D: Embedding Dimension Sensitivity
-
-We vary embedding dimension d ∈ {16, 32, 64, 128, 256} for the four published baselines and the DualAttn-TB control under GPU 5-fold CV.
-
-**Table D. HR@10 vs. Embedding Dimension d (GPU 5-fold CV)**
-
-| d | MF | LightGCN | NGCF | SGL | DualAttn-TB |
-|---|-----|---------|------|-----|---------|
-| 16 | 0.6847 | 0.7140 | 0.7100 | 0.2700 | 0.7433 |
-| 32 | 0.7187 | 0.7300 | 0.7767 | 0.3133 | **0.7550** |
-| 64 | 0.7300 | 0.7113 | 0.7813 | 0.3467 | 0.7533 |
-| 128 | 0.7533 | 0.7340 | 0.7833 | 0.3813 | 0.7517 |
-| 256 | **0.7527** | **0.7440** | **0.7867** | **0.4213** | 0.7183 |
-
-*(GPU 5-fold CV; bold = best per column; see Figure 4)*
-
-**Table D-AUC. AUC vs. Embedding Dimension d (GPU 5-fold CV)**
-
-| d | MF | LightGCN | NGCF | SGL | DualAttn-TB |
-|---|-----|---------|------|-----|---------|
-| 16 | 0.5042 | 0.8381 | 0.8644 | 0.6545 | **0.8573** |
-| 32 | 0.5139 | 0.8417 | 0.8761 | 0.6683 | **0.8623** |
-| 64 | 0.5087 | 0.8220 | 0.8771 | 0.6867 | 0.8553 |
-| 128 | 0.5353 | 0.8308 | 0.8793 | 0.7042 | 0.8155 |
-| 256 | **0.5428** | 0.8408 | **0.8810** | **0.7223** | 0.5740 ← ⚠ |
-
-**Table D-NDCG. NDCG@10 vs. Embedding Dimension d (GPU 5-fold CV)**
-
-| d | MF | LightGCN | NGCF | SGL | DualAttn-TB |
-|---|-----|---------|------|-----|---------|
-| 16 | 0.5404 | 0.4482 | 0.4187 | 0.1509 | 0.5787 |
-| 32 | 0.5760 | 0.4920 | 0.4909 | 0.1817 | **0.6029** |
-| 64 | 0.5946 | 0.4935 | 0.5508 | 0.2201 | 0.6033 |
-| 128 | 0.6025 | 0.5388 | 0.5775 | 0.2651 | 0.6008 |
-| 256 | **0.6046** | **0.5670** | **0.5858** | **0.3019** | 0.5816 |
-
-**Finding D1 — MF Monotonic Scaling.** MF's HR@10 scales consistently from 0.6847 (d=16) to a plateau at d=128–256 (0.7533/0.7527), Δ(d=16→128)=+0.0687 (+10.0%). AUC rises from 0.5042→0.5428, confirming capacity improves both calibration and ranking. MF shows no saturation up to d=256 — distinct from all GNN models — consistent with a non-overparameterized matrix factorization under L2 regularization.
-
-**Finding D2 — NGCF Dimension Efficiency.** NGCF reaches near-peak HR@10 at d=64 (0.7813, 99.3% of d=256=0.7867). The d=64→256 gain is only +0.0054 (+0.7%) at 4× compute cost. NDCG@10 continues scaling to d=256 (0.5858 vs. d=64=0.5508, +6.3%), indicating that for NDCG-focused tasks d=128–256 is preferred; for HR@10-focused tasks d=64 is the practical optimum.
-
-**Finding D3 — LightGCN Non-Monotone Behavior.** LightGCN HR@10 peaks at d=32 (0.7300), drops at d=64 (0.7113, −2.6%), then recovers to d=256 (0.7440). NDCG@10 however scales monotonically (0.4482→0.5670), indicating the HR non-monotonicity reflects sensitivity to over-smoothing at intermediate dimensions while NDCG benefits from larger capacity. For LightGCN on NutriGraph-KR, d=256 is the overall optimum.
-
-**Finding D4 — SGL Capacity Partial Recovery.** SGL HR@10 improves from 0.2700 (d=16) to 0.4213 (d=256), a **+56.0% relative gain**. AUC also scales strongly (0.6545→0.7223, +10.4p). However, at d=256 SGL still achieves only 0.4213 vs. MF's 0.7527 (**56% of MF**) and NGCF's 0.7867 (**54% of NGCF**). The contrastive collapse is capacity-independent: doubling dimensions improves representation power but cannot compensate for the absence of meaningful positive views at 12.6 interactions/user.
-
-**Finding D5 — DualAttn-TB dim=256 AUC Collapse (Critical).** DualAttn-TB's AUC **collapses from 0.8623 (d=32) to 0.5740 (d=256)**, a drop of **0.2883 absolute points** (−33.4%). The average AUC for d∈{16,32,64,128} is 0.8476, making d=256 a −0.2736p outlier. HR@10 declines more modestly (0.7550→0.7183, −4.9%). The AUC collapse at high d is consistent with **attention weight ill-conditioning**: at d=256 with 4 attention heads, each head operates in 64-dimensional subspace; attention energies become near-uniform, collapsing score calibration while preserving rough rank ordering. **Practical recommendation: d=32 for DualAttn-TB** (HR@10=0.7550, AUC=0.8623 — both at or near maximum).
-
----
-
-### 6.5 EXP-G: GNN Layer Depth and Over-Smoothing Analysis
-
-We vary the number of GNN propagation layers L ∈ {1, 2, 3, 4} for LightGCN and NGCF to characterize over-smoothing behavior on NutriGraph-KR under GPU 5-fold CV.
-
-**Table G. Performance vs. GNN Layer Depth (GPU 5-fold CV, dim=64)**
-
-| Layers | LightGCN HR@10 | LightGCN NDCG@10 | LightGCN AUC | NGCF HR@10 | NGCF NDCG@10 | NGCF AUC |
-|--------|----------------|-----------------|--------------|------------|--------------|----------|
-| 1 | 0.7456±0.0177 | 0.5386±0.0132 | 0.8522±0.0018 | **0.7876±0.0150** | **0.5812±0.0109** | **0.8821±0.0017** |
-| **2** | **0.7844±0.0206** | **0.5838±0.0187** | **0.8783±0.0013** | 0.7800±0.0206 | 0.5486±0.0315 | 0.8799±0.0035 |
-| 3 | 0.7208±0.0223 | 0.4986±0.0157 | 0.8218±0.0012 | 0.7844±0.0209 | 0.5567±0.0223 | 0.8777±0.0014 |
-| 4 | 0.7576±0.0203 | 0.5413±0.0194 | 0.8375±0.0016 | 0.7868±0.0228 | 0.5385±0.0175 | 0.8773±0.0015 |
-
-*(Bold = best per column; GPU 5-fold CV; LightGCN best at L=2, NGCF best at L=1; Δ HR@10 across L=1–4: LightGCN=0.0636, NGCF=0.0076)*
-
-**Finding G1 — Architecture-Dependent Layer Sensitivity.** Under GPU 5-fold CV, the two models show **markedly different layer sensitivity profiles**. NGCF is largely layer-invariant: HR@10 ranges from 0.7800 (L=2) to 0.7876 (L=1), a variation of only Δ=0.0076 (1.0%) across all four settings, consistent with the prior hypothesis of sparse-graph saturation. LightGCN, however, shows a **non-monotonic pattern**: HR@10 peaks at L=2 (0.7844), drops sharply at L=3 (0.7208, −8.1%), and partially recovers at L=4 (0.7576). This revised finding replaces the earlier 1-fold observation of complete layer-invariance for LightGCN: 5-fold CV reveals that L=3 is actively harmful for LightGCN (Δ=−0.0636 vs. L=2), likely due to oversmoothing of the propagated embeddings at an intermediate depth where neighborhood overlap is highest.
-
-**Finding G2 — Optimal Layer Depth Is Model-Specific.** L=1 is optimal for NGCF (HR@10=0.7876, NDCG@10=0.5812, AUC=0.8821), confirming that NGCF's interaction-term message passing saturates rapidly in sparse graphs. For LightGCN, L=2 is optimal (HR@10=0.7844, NDCG@10=0.5838, AUC=0.8783): a single additional hop provides meaningful collaborative signal aggregation, but L=3 enters an over-smoothing regime. The practical recommendation is therefore: **use L=1 for NGCF and L=2 for LightGCN** on NutriGraph-KR-scale sparse nutrition graphs.
-
-**Finding G3 — Structural Explanation: Selective Over-Smoothing at L=3.** The LightGCN L=3 dip (HR@10=0.7208, AUC=0.8218) is mechanistically distinct from classical over-smoothing: it reflects the point at which 3-hop neighborhoods in the sparse interaction graph begin to overlap significantly across users, causing their embeddings to converge. In NutriGraph-KR (avg 12.6 interactions/user, food median degree=1.0), a user's 3-hop neighborhood includes all users who share a food with any food eaten by a friend-of-friend — a set that rapidly expands to include most of the user base in sparse graphs. This "sparse-graph over-smoothing" occurs at shallower depth (L=3) than in dense graphs (typically L=5–6), and partially resolves at L=4 as the model adapts via the BPR objective. NGCF avoids this phenomenon because its element-wise interaction term preserves identity structure even under multi-hop aggregation.
-
-**Finding G4 — Practical Implication.** For ultra-sparse recommendation graphs (density < 0.05%, mean degree < 15), **NGCF with L=1 and LightGCN with L=2 are the recommended configurations**. Specifically, L=3 should be avoided for LightGCN (−8.1% HR@10 penalty), and L≥2 provides no benefit for NGCF. Both findings are robust across 5 folds (LightGCN L=2: std=0.0206; NGCF L=1: std=0.0150). These depth-specific guidelines are an architectural property of each model's message-passing mechanism interacting with graph sparsity, not a dataset artifact.
-
----
-
-### 6.6 EXP-F: Graph Component Ablation — Does NutriGraphNet Actually Consume Its Topology?
-
-Section 6.2 showed that NutriGraphNet's advantage is largest exactly where interaction edges are scarcest, which is what the auxiliary-edge hypothesis predicts. But a correlation between sparsity and advantage does not by itself prove that the model *uses* auxiliary structure. EXP-F tests that mechanism directly by removing edge types and measuring the consequence.
+Section 6.1 showed that NutriGraphNet's advantage is largest exactly where interaction edges are scarcest, which is what the auxiliary-edge hypothesis predicts. But a correlation between sparsity and advantage does not by itself prove that the model *uses* auxiliary structure. EXP-F tests that mechanism directly by removing edge types and measuring the consequence.
 
 The experiment is run in two parts. **EXP-F v1** establishes the measuring instrument: we ablate edges on the DualAttn-TB control, which by construction never reads auxiliary `edge_index` tensors, and confirm that the harness reports exactly zero change — the necessary calibration check. **EXP-F v2** then applies the same harness to models that do read the graph. The contrast between the two is the finding.
 
@@ -516,7 +348,204 @@ The finding is therefore architecturally expected and reproducible.
 
 ---
 
-### 6.7 Cross-Experiment Synthesis
+## 7. Health Constraints Are Architecturally Routed
+
+### 7.1 EXP-C: Health Constraint λ_health Sensitivity
+
+**Hypothesis:** If health loss gradients properly backpropagate through model parameters, varying λ_health should change both health alignment (measurable via HealthGain@K) and ranking quality (HR@10). We test this hypothesis on two architectures: **NutriGraphNet** (routes message-passing through all 9 edge types, including `healthness`) and **DualAttn-TB** (dual-attention architecture, serving as an ablation baseline).
+
+We vary λ_health ∈ {0.0, 0.001, 0.005, 0.01, 0.05, 0.1, 0.5, 1.0} under **3-seed evaluation** (seeds 123, 777; see Note below) with lightweight parameters (hidden=64, out=32, num_layers=1, heads=2) matching the 1-fold experimental setup for consistency with prior EXP-C runs.
+
+**Note on seed=42:** seed=42 exhibits early convergence failure across all λ values (AUC≈0.55, early stop at epoch 23), attributable to an unfavorable random data split. All results below exclude seed=42 and report 2-seed mean over seeds {123, 777}.
+
+**Table C. NutriGraphNet Performance vs. λ_health (2-seed mean, seeds 123+777)**
+
+| λ_health | AUC | HR@10 | NDCG@10 | MRR | HealthGain@10 |
+|---------|--------|--------|---------|--------|---------------|
+| 0.000 | 0.8548 | 0.7400 | 0.5124 | 0.4496 | −0.00900 |
+| 0.001 | 0.8549 | 0.7400 | 0.5128 | 0.4501 | −0.00900 |
+| 0.005 | 0.8546 | 0.7410 | 0.5060 | 0.4408 | −0.00920 |
+| 0.010 | 0.8550 | 0.7390 | 0.5130 | 0.4508 | −0.00895 |
+| 0.050 | 0.8556 | 0.7390 | 0.5110 | 0.4480 | −0.00910 |
+| **0.100** | 0.8519 | **0.7430** | **0.5129** | **0.4489** | −0.00935 |
+| 0.500 | 0.8370 ↓ | 0.7350 | 0.5032 | 0.4395 | −0.00940 |
+| 1.000 | 0.8427 | 0.7360 | 0.4935 ↓ | 0.4264 ↓ | −0.00930 |
+
+*(2-seed mean, seeds={123,777}; lightweight params: hidden=64, out=32, num_layers=1, heads=2)*
+
+**Table C-Control (Reference). DualAttn-TB Performance vs. λ_health (identical by construction — the control's health branch cannot reach graph structure)**
+
+| λ_health | AUC | F1 | HR@10 | NDCG@10 | MRR | HealthGain@10 |
+|---------|--------|--------|--------|---------|--------|---------------|
+| 0.000–1.000 | 0.8551 | 0.7200 | 0.7340 | 0.5977 | 0.5635 | ≈ 0 (all λ) |
+
+*(Δ HR@10 = 0.0000 exactly; Δ AUC < 1.25×10⁻⁷ for all λ ∈ [0.001, 1.0]. Reported for architectural contrast only.)*
+
+**Finding C1 — NutriGraphNet Is Robust to λ in [0.001, 0.1].** Across the practical range λ ∈ {0.001, 0.005, 0.01, 0.05, 0.1}, HR@10 varies by only **Δ=0.0040** (0.7390–0.7430) — within measurement noise. This **robust plateau** demonstrates that NutriGraphNet's ranking quality is insensitive to the exact health constraint weight, making deployment straightforward: any λ in this range is safe. The result revises the earlier CPU 1-fold finding (which suggested λ=0.5 as optimal); under multi-seed evaluation with proper convergence control, no single λ is decisively better than others in the plateau.
+
+**Finding C2 — HealthGain@10 Is Consistently Non-Zero Across All λ.** HealthGain@10 is negative and stable across λ ∈ {0.0, 0.001, ..., 1.0} (range: −0.00895 to −0.00940 in the plateau, −0.00930 at λ=1.0). Three observations are critical: *(i)* **non-zero at λ=0.0** (−0.009) — baseline health-gradient signal exists from the architecture itself; *(ii)* **magnitude stable** across the plateau, indicating health regularization does not meaningfully alter the health-alignment direction; *(iii)* **active at large λ** (−0.0094 at λ=0.5) — even at high health weights, the model maintains gradient flow. This contrasts sharply with DualAttn-TB's structurally zero HealthGain, confirming NutriGraphNet's architectural health gradient routing is functional across the full λ range.
+
+**Finding C3 — Health–Ranking Degradation at λ≥0.5 Is Moderate *under Lightweight Parameters*.** Above λ=0.1, ranking metrics show mild degradation in this setting: HR@10 drops from 0.7430 (λ=0.1) to 0.7350 (λ=0.5, −1.1%) and AUC from 0.8556 (λ=0.05) to 0.8370 (λ=0.5, −2.2%). This is substantially milder than the CPU 1-fold estimate (−29.7% at λ=1.0) — but the full-parameter confirmation (Table C-Full, Finding C5) shows the degradation severity is capacity-dependent: under full parameters HR@10 falls −19.6% at λ=0.5 and −27.3% at λ=1.0. The consistent picture across both regimes is that **NutriGraphNet tolerates moderate health regularization (λ≤0.1) without significant ranking cost**, while strong regularization (λ≥0.5) carries a real — and at full capacity, severe — ranking penalty. **Practical recommendation: λ=0.01 as default** — on the plateau in both regimes, conservative, and interpretable.
+
+**Finding C4 — NutriGraphNet Health Loss Is Active; DualAttn-TB Is Architecturally Severed.** For NutriGraphNet, HealthGain@10 is consistently non-zero (≈−0.009) across all λ, confirming that health gradients flow from the `healthness` edge convolution path through the NutriLoss objective. This is a qualitative departure from DualAttn-TB's structurally zero health gradient (Δ HR@10 = 0.000 exactly, Δ AUC < 1.25×10⁻⁷ across all λ), validating that NutriGraphNet's architectural design enables genuine health-aware optimization regardless of λ choice.
+
+**Full-Parameter Confirmation (EXP-C-Full: GPU 5-fold CV, hidden=128, out=64, layers=3, heads=4, seed 42).** To address the parameter-scale caveat, we additionally ran the identical λ sweep under the full-parameter GPU 5-fold protocol used in EXP-B/D/F/G.
+
+**Table C-Full. NutriGraphNet Performance vs. λ_health (GPU 5-fold CV, full parameters, seed 42)**
+
+| λ_health | AUC | HR@10 (±σ) | NDCG@10 | MRR | HealthGain@10 |
+|---------|--------|--------|---------|--------|---------------|
+| 0.000 | 0.8577 | 0.7116 (±0.0624) | 0.4032 | 0.3202 | −0.01083 |
+| 0.001 | 0.8606 | 0.7396 (±0.0201) | 0.4188 | 0.3289 | −0.01091 |
+| **0.005** | **0.8620** | **0.7484 (±0.0192)** | **0.4279** | **0.3378** | −0.01158 |
+| 0.010 | 0.8545 | 0.7308 (±0.0295) | 0.4176 | 0.3310 | −0.00999 |
+| 0.050 | 0.8508 | 0.6836 (±0.0884) | 0.3869 | 0.3091 | −0.00877 |
+| 0.100 | 0.8573 | 0.7176 (±0.0302) | 0.3953 | 0.3073 | −0.00911 |
+| 0.500 | 0.8387 ↓ | 0.5820 (±0.0481) ↓ | 0.2841 ↓ | 0.2138 ↓ | −0.00300 |
+| 1.000 | 0.8271 ↓ | 0.5260 (±0.0681) ↓ | 0.2700 ↓ | 0.2143 ↓ | −0.00190 |
+
+*(single seed=42; 5-fold mean. Unlike the lightweight setting, seed 42 converges normally here — AUC=0.83–0.86 at every λ — consistent with the convergence failure being specific to the lightweight/1-layer configuration.)*
+
+**Finding C5 — The Plateau Survives Full Parameters; the Degradation Does Not Stay Mild.** Two conclusions from Table C-Full: *(i)* **the λ-robust plateau holds qualitatively** — across λ ∈ [0.001, 0.1], HR@10 varies non-monotonically within 0.6836–0.7484 (Δ=0.0648), which is within fold-level noise (σ up to 0.088) and shows no systematic trend, confirming that no single λ in the practical range is decisively better; λ=0.005 is the nominal optimum (HR@10=0.7484, also the best AUC=0.8620). *(ii)* **Degradation at λ≥0.5 is severe under full parameters** — HR@10 falls to 0.5820 at λ=0.5 (−19.6% vs. plateau mean 0.7240) and 0.5260 at λ=1.0 (−27.3%), an order of magnitude larger than the lightweight-setting estimate (−1.1%) and close to the original CPU 1-fold observation (−29.7%). Notably, HealthGain@10 simultaneously shrinks toward zero (−0.0030 at λ=0.5, −0.0019 at λ=1.0 vs. ≈−0.011 on the plateau): at full capacity, strong health regularization actively pulls recommendations toward the population nutritional average — the health–ranking trade-off becomes *functional* rather than dormant. The degradation severity is therefore **capacity-dependent**: lightweight models lack the capacity for L_health to reshape rankings, while the full model trades ranking for health alignment exactly as the loss design intends. The practical recommendation is unchanged — **λ=0.01 remains a safe default** (on the plateau in both regimes) — but λ≥0.5 should be avoided in deployment unless health alignment is explicitly prioritized over ranking quality. A multi-seed replication of the full-parameter sweep remains future work.
+
+**Mechanism Analysis — Why NutriGraphNet Succeeds Where DualAttn-TB Fails.**
+
+**(a) Architectural health gradient path:** NutriGraphNet's DualChannelEncoder applies GATConv over all 9 edge types including `('user', 'healthness', 'food')`. The health constraint loss L_health is defined over food embeddings that are updated via message-passing along `healthness` edges. The NutriLoss gradient thus flows: L_health → food_emb (via healthness conv) → GATConv parameters — a **valid architectural path**. In contrast, DualAttn-TB's NLA/SLA branches use direct embedding lookup and interaction-matrix attention only; `healthness` edges are never consumed in forward propagation, severing the gradient path entirely.
+
+**(b) Lightweight vs. full-parameter behavior:** The multi-seed sweep (Table C) uses lightweight parameters (hidden=64, out=32, layers=1, heads=2) for consistency with prior EXP-C runs; the full-parameter GPU 5-fold sweep (Table C-Full) confirms the plateau qualitatively while revealing that the λ≥0.5 degradation — mild under lightweight parameters (−1.1%) — becomes severe at full capacity (−19.6%/−27.3%), with HealthGain@10 simultaneously moving toward zero. See Finding C5 for the capacity-dependence interpretation.
+
+**Practical Implication.** NutriGraphNet provides **architecturally guaranteed health-gradient routing** with **λ=0.01 as the recommended default** (robust plateau, no ranking cost, conservative health weight). For clinical practitioners: *(i)* health-aware recommendation is achievable with proper architectural routing regardless of exact λ; *(ii)* DualAttn-TB's named health constraint provides zero guarantee without architectural remediation; *(iii)* λ sensitivity analysis should always include HealthGain@K verification — non-zero HealthGain is the only reliable indicator of active health optimization.
+
+---
+
+## 8. Supporting Analyses and Negative Results
+
+### 8.1 EXP-D: Embedding Dimension Sensitivity
+
+We vary embedding dimension d ∈ {16, 32, 64, 128, 256} for the four published baselines and the DualAttn-TB control under GPU 5-fold CV.
+
+**Table D. HR@10 vs. Embedding Dimension d (GPU 5-fold CV)**
+
+| d | MF | LightGCN | NGCF | SGL | DualAttn-TB |
+|---|-----|---------|------|-----|---------|
+| 16 | 0.6847 | 0.7140 | 0.7100 | 0.2700 | 0.7433 |
+| 32 | 0.7187 | 0.7300 | 0.7767 | 0.3133 | **0.7550** |
+| 64 | 0.7300 | 0.7113 | 0.7813 | 0.3467 | 0.7533 |
+| 128 | 0.7533 | 0.7340 | 0.7833 | 0.3813 | 0.7517 |
+| 256 | **0.7527** | **0.7440** | **0.7867** | **0.4213** | 0.7183 |
+
+*(GPU 5-fold CV; bold = best per column; see Figure 4)*
+
+**Table D-AUC. AUC vs. Embedding Dimension d (GPU 5-fold CV)**
+
+| d | MF | LightGCN | NGCF | SGL | DualAttn-TB |
+|---|-----|---------|------|-----|---------|
+| 16 | 0.5042 | 0.8381 | 0.8644 | 0.6545 | **0.8573** |
+| 32 | 0.5139 | 0.8417 | 0.8761 | 0.6683 | **0.8623** |
+| 64 | 0.5087 | 0.8220 | 0.8771 | 0.6867 | 0.8553 |
+| 128 | 0.5353 | 0.8308 | 0.8793 | 0.7042 | 0.8155 |
+| 256 | **0.5428** | 0.8408 | **0.8810** | **0.7223** | 0.5740 ← ⚠ |
+
+**Table D-NDCG. NDCG@10 vs. Embedding Dimension d (GPU 5-fold CV)**
+
+| d | MF | LightGCN | NGCF | SGL | DualAttn-TB |
+|---|-----|---------|------|-----|---------|
+| 16 | 0.5404 | 0.4482 | 0.4187 | 0.1509 | 0.5787 |
+| 32 | 0.5760 | 0.4920 | 0.4909 | 0.1817 | **0.6029** |
+| 64 | 0.5946 | 0.4935 | 0.5508 | 0.2201 | 0.6033 |
+| 128 | 0.6025 | 0.5388 | 0.5775 | 0.2651 | 0.6008 |
+| 256 | **0.6046** | **0.5670** | **0.5858** | **0.3019** | 0.5816 |
+
+**Finding D1 — MF Monotonic Scaling.** MF's HR@10 scales consistently from 0.6847 (d=16) to a plateau at d=128–256 (0.7533/0.7527), Δ(d=16→128)=+0.0687 (+10.0%). AUC rises from 0.5042→0.5428, confirming capacity improves both calibration and ranking. MF shows no saturation up to d=256 — distinct from all GNN models — consistent with a non-overparameterized matrix factorization under L2 regularization.
+
+**Finding D2 — NGCF Dimension Efficiency.** NGCF reaches near-peak HR@10 at d=64 (0.7813, 99.3% of d=256=0.7867). The d=64→256 gain is only +0.0054 (+0.7%) at 4× compute cost. NDCG@10 continues scaling to d=256 (0.5858 vs. d=64=0.5508, +6.3%), indicating that for NDCG-focused tasks d=128–256 is preferred; for HR@10-focused tasks d=64 is the practical optimum.
+
+**Finding D3 — LightGCN Non-Monotone Behavior.** LightGCN HR@10 peaks at d=32 (0.7300), drops at d=64 (0.7113, −2.6%), then recovers to d=256 (0.7440). NDCG@10 however scales monotonically (0.4482→0.5670), indicating the HR non-monotonicity reflects sensitivity to over-smoothing at intermediate dimensions while NDCG benefits from larger capacity. For LightGCN on NutriGraph-KR, d=256 is the overall optimum.
+
+**Finding D4 — SGL Capacity Partial Recovery.** SGL HR@10 improves from 0.2700 (d=16) to 0.4213 (d=256), a **+56.0% relative gain**. AUC also scales strongly (0.6545→0.7223, +10.4p). However, at d=256 SGL still achieves only 0.4213 vs. MF's 0.7527 (**56% of MF**) and NGCF's 0.7867 (**54% of NGCF**). The contrastive collapse is capacity-independent: doubling dimensions improves representation power but cannot compensate for the absence of meaningful positive views at 12.6 interactions/user.
+
+**Finding D5 — DualAttn-TB dim=256 AUC Collapse (Critical).** DualAttn-TB's AUC **collapses from 0.8623 (d=32) to 0.5740 (d=256)**, a drop of **0.2883 absolute points** (−33.4%). The average AUC for d∈{16,32,64,128} is 0.8476, making d=256 a −0.2736p outlier. HR@10 declines more modestly (0.7550→0.7183, −4.9%). The AUC collapse at high d is consistent with **attention weight ill-conditioning**: at d=256 with 4 attention heads, each head operates in 64-dimensional subspace; attention energies become near-uniform, collapsing score calibration while preserving rough rank ordering. **Practical recommendation: d=32 for DualAttn-TB** (HR@10=0.7550, AUC=0.8623 — both at or near maximum).
+
+---
+
+### 8.2 EXP-G: GNN Layer Depth and Over-Smoothing Analysis
+
+We vary the number of GNN propagation layers L ∈ {1, 2, 3, 4} for LightGCN and NGCF to characterize over-smoothing behavior on NutriGraph-KR under GPU 5-fold CV.
+
+**Table G. Performance vs. GNN Layer Depth (GPU 5-fold CV, dim=64)**
+
+| Layers | LightGCN HR@10 | LightGCN NDCG@10 | LightGCN AUC | NGCF HR@10 | NGCF NDCG@10 | NGCF AUC |
+|--------|----------------|-----------------|--------------|------------|--------------|----------|
+| 1 | 0.7456±0.0177 | 0.5386±0.0132 | 0.8522±0.0018 | **0.7876±0.0150** | **0.5812±0.0109** | **0.8821±0.0017** |
+| **2** | **0.7844±0.0206** | **0.5838±0.0187** | **0.8783±0.0013** | 0.7800±0.0206 | 0.5486±0.0315 | 0.8799±0.0035 |
+| 3 | 0.7208±0.0223 | 0.4986±0.0157 | 0.8218±0.0012 | 0.7844±0.0209 | 0.5567±0.0223 | 0.8777±0.0014 |
+| 4 | 0.7576±0.0203 | 0.5413±0.0194 | 0.8375±0.0016 | 0.7868±0.0228 | 0.5385±0.0175 | 0.8773±0.0015 |
+
+*(Bold = best per column; GPU 5-fold CV; LightGCN best at L=2, NGCF best at L=1; Δ HR@10 across L=1–4: LightGCN=0.0636, NGCF=0.0076)*
+
+**Finding G1 — Architecture-Dependent Layer Sensitivity.** Under GPU 5-fold CV, the two models show **markedly different layer sensitivity profiles**. NGCF is largely layer-invariant: HR@10 ranges from 0.7800 (L=2) to 0.7876 (L=1), a variation of only Δ=0.0076 (1.0%) across all four settings, consistent with the prior hypothesis of sparse-graph saturation. LightGCN, however, shows a **non-monotonic pattern**: HR@10 peaks at L=2 (0.7844), drops sharply at L=3 (0.7208, −8.1%), and partially recovers at L=4 (0.7576). This revised finding replaces the earlier 1-fold observation of complete layer-invariance for LightGCN: 5-fold CV reveals that L=3 is actively harmful for LightGCN (Δ=−0.0636 vs. L=2), likely due to oversmoothing of the propagated embeddings at an intermediate depth where neighborhood overlap is highest.
+
+**Finding G2 — Optimal Layer Depth Is Model-Specific.** L=1 is optimal for NGCF (HR@10=0.7876, NDCG@10=0.5812, AUC=0.8821), confirming that NGCF's interaction-term message passing saturates rapidly in sparse graphs. For LightGCN, L=2 is optimal (HR@10=0.7844, NDCG@10=0.5838, AUC=0.8783): a single additional hop provides meaningful collaborative signal aggregation, but L=3 enters an over-smoothing regime. The practical recommendation is therefore: **use L=1 for NGCF and L=2 for LightGCN** on NutriGraph-KR-scale sparse nutrition graphs.
+
+**Finding G3 — Structural Explanation: Selective Over-Smoothing at L=3.** The LightGCN L=3 dip (HR@10=0.7208, AUC=0.8218) is mechanistically distinct from classical over-smoothing: it reflects the point at which 3-hop neighborhoods in the sparse interaction graph begin to overlap significantly across users, causing their embeddings to converge. In NutriGraph-KR (avg 12.6 interactions/user, food median degree=1.0), a user's 3-hop neighborhood includes all users who share a food with any food eaten by a friend-of-friend — a set that rapidly expands to include most of the user base in sparse graphs. This "sparse-graph over-smoothing" occurs at shallower depth (L=3) than in dense graphs (typically L=5–6), and partially resolves at L=4 as the model adapts via the BPR objective. NGCF avoids this phenomenon because its element-wise interaction term preserves identity structure even under multi-hop aggregation.
+
+**Finding G4 — Practical Implication.** For ultra-sparse recommendation graphs (density < 0.05%, mean degree < 15), **NGCF with L=1 and LightGCN with L=2 are the recommended configurations**. Specifically, L=3 should be avoided for LightGCN (−8.1% HR@10 penalty), and L≥2 provides no benefit for NGCF. Both findings are robust across 5 folds (LightGCN L=2: std=0.0206; NGCF L=1: std=0.0150). These depth-specific guidelines are an architectural property of each model's message-passing mechanism interacting with graph sparsity, not a dataset artifact.
+
+---
+
+### 8.3 EXP-A: SGL Augmentation Ratio Sensitivity — A Negative Result
+
+**Hypothesis:** Edge dropout destroys the sparse semantically-coherent user-food interaction structure, collapsing contrastive views.
+
+We vary SGL's edge dropout ratio p ∈ {0.0, 0.1, 0.2, 0.3, 0.4, 0.5} on the full dataset under GPU 5-fold CV (hidden=128, out=64, layers=3, heads=4).
+
+**Table A. SGL Performance vs. Augmentation Ratio p (GPU 5-fold CV)**
+
+| p | AUC | F1 | HR@10 | NDCG@10 | MRR |
+|---|-----|-----|-------|---------|-----|
+| **0.0** | **0.7001** | **0.6617** | **0.3604** | **0.2336** | **0.2152** |
+| 0.1 | 0.6989 | 0.6598 | 0.3576 | 0.2283 | 0.2089 |
+| 0.2 | 0.6979 | 0.6593 | 0.3564 | 0.2264 | 0.2067 |
+| 0.3 | 0.6975 | 0.6594 | 0.3600 | 0.2267 | 0.2058 |
+| 0.4 | 0.6975 | 0.6596 | 0.3576 | 0.2268 | 0.2069 |
+| 0.5 | 0.6983 | **0.6604** | 0.3520 | **0.2288** | 0.2116 |
+
+*(GPU 5-fold CV confirmed; HR@10 step differences: −0.0028, −0.0012, +0.0036, −0.0024, −0.0056)*
+
+**Finding A1 — Augmentation Is Always Harmful.** Under GPU 5-fold CV, the best HR@10 and MRR are confirmed at **p=0.0** (no augmentation). HR@10=0.3604 at p=0.0 declines to 0.3520 at p=0.5 (Δ=−0.0084, −2.3% relative). NDCG@10 worst point is p=0.2 (0.2264, −3.1% vs. p=0.0). The monotonic decline across all 6 augmentation levels establishes that SGL's contrastive objective is **never beneficial** on NutriGraph-KR regardless of dropout intensity. Notably, F1 at p=0.5 (0.6604) slightly exceeds p=0.1–0.4 due to regularization effects on the classification head, but HR@10 and NDCG@10 — the primary ranking metrics — are unambiguously best at p=0.0.
+
+**Finding A2 — AUC Decoupling.** AUC declines more slowly (0.7001→0.6975 at p=0.3–0.4) than ranking metrics. Classification-level representation quality is less sensitive to augmentation collapse than ranking-level ordering, consistent with AUC measuring pair-wise score ordering rather than absolute score magnitude.
+
+**Finding A3 — Non-Monotone Micro-Fluctuation.** The step difference at p=0.3 is +0.0036 (slight recovery), creating a local minimum at p=0.2. This non-monotone behavior is consistent with stochastic variance in the training process rather than a genuine beneficial effect of moderate augmentation.
+
+**Theoretical Explanation.** In MovieLens-1M (avg **165 interactions/user**, density 0.4%), removing 10% of edges still leaves ~149 interactions per user — ample for non-degenerate contrastive views. In NutriGraph-KR (avg **12.6 interactions/user**, density 0.040%), a 10% dropout removes only **1.26 interactions** per user. With 2–3 positive interactions remaining in the augmented view, the InfoNCE loss cannot distinguish true user preferences from noise; augmented views become nearly indistinguishable from random negative samples, collapsing the contrastive gradient signal.
+
+---
+
+### 8.4 Architecture Choices Do Not Transfer Across Density
+
+The design decisions that improve ranking at full density can actively harm the sparse regime. We observed this directly while developing NutriGraphNet. A revised variant (v3) replaces the HybridDecoder (Bilinear × Dot × MLP ensemble) with a pure L2-normalised dot-product decoder that is rank-optimal by construction, and replaces the dual-channel encoder with a residual/batch-normalised one. Given an identical budget (300 epochs, lr=1e-3, seed 42, identical folds and interaction subsets), the two variants invert across density:
+
+**Table H. NutriGraphNet Decoder Variants vs. Interaction Density (GPU 5-fold CV, HR@10 unless noted)**
+
+| Density | v2 (HybridDecoder) | v3 (RankDot decoder) | Winner |
+|---------|--------------------|----------------------|--------|
+| 10% | **0.738** | 0.645 (−12.6%) | v2 |
+| 30% | **0.755** | 0.700 (−7.3%) | v2 |
+| 100% | 0.729 | **0.751** | v3 |
+| 100% — NDCG@10 | 0.428 | **0.511** (+19.5%) | v3 |
+| 100% — MRR | 0.338 | **0.445** (+31.7%) | v3 |
+| 100% — AUC | 0.862 | **0.872** | v3 |
+
+**Finding H1 — Rank Calibration Helps With Data and Hurts Without It.** The rank-calibrated decoder delivers exactly what it was designed for at full density (+19.5% NDCG@10, +31.7% MRR) and reverses at low density, losing 12.6% HR@10 at 10%. The gap is 18× our measured run-to-run noise floor (≈0.005), so it is not a fluctuation. The interpretation consistent with the rest of this study is capacity: a pure dot-product decoder is a *simpler* function than the Bilinear+MLP ensemble, and simpler models are hungrier — the same ordering EXP-B reports across baselines (scaling ratios: NutriGraphNet 0.99×, LightGCN 1.38×, NGCF 1.54×, MF 2.18×, SGL 4.06×). The decoder capacity that looks like a liability at 100% density is what extracts signal from auxiliary structure at 10%.
+
+This has a practical consequence beyond our model: **architecture ablations reported only at full density can recommend the wrong design for data-scarce deployment.** We report v2 throughout this paper because the sparse regime is the setting of interest; had we selected on full-density NDCG alone, we would have shipped the variant that is 12.6% worse where it matters.
+
+*Caveat.* v3's hyperparameters were tuned at full density and not re-tuned for the sparse regime; v2's were likewise held fixed across densities, so the comparison is matched on budget rather than on per-density optimality. We report the crossover as an observed interaction, not as a proof that no rank-calibrated decoder can win at low density.
+
+---
+
+## 9. Cross-Experiment Synthesis
 
 The six experiments collectively paint a coherent picture of failure modes and success conditions in GNN-based food recommendation. Figure 6 summarizes the AUC vs. HR@10 trade-off landscape across all models and conditions.
 
@@ -553,7 +582,7 @@ The six experiments collectively paint a coherent picture of failure modes and s
 
 ---
 
-## 7. Design Guidelines
+## 10. Design Guidelines
 
 Based on our empirical findings, we propose the following actionable guidelines for practitioners:
 
@@ -574,56 +603,33 @@ Based on our empirical findings, we propose the following actionable guidelines 
 | Auxiliary edge types | **Ablate each edge type** to verify forward-pass contribution | EXP-F: DualAttn-TB Delta HR@10=0.000000 for all 3 auxiliary edge types; NutriGraphNet shows real -1.7% to -21.0% degradation (EXP-F v2a), confirming genuine topology dependence |
 | "Heterogeneous graph" claims | Only claim graph-awareness if architecture **routes messages** through edges | EXP-F: a topology-blind model reproduces competitive AUC/HR without reading any auxiliary edge, so graph framing alone is not evidence of graph use |
 | Clinical health-aware deployment | **Verify health gradients architecturally**, not just via named loss | EXP-C/F: NutriGraphNet shows active HealthGain@K; the control's health branch cannot affect graph structure at all |
-| Architecture selection | **Choose the decoder for your density**, not by full-density benchmarks | §7.3: a rank-calibrated decoder gains +19.5% NDCG@10 at 100% density but loses −12.6% HR@10 at 10% |
+| Architecture selection | **Choose the decoder for your density**, not by full-density benchmarks | §8.4: a rank-calibrated decoder gains +19.5% NDCG@10 at 100% density but loses −12.6% HR@10 at 10% |
 
 ---
 
-### 7.3 Architecture Choices Do Not Transfer Across Density
-
-The design decisions that improve ranking at full density can actively harm the sparse regime. We observed this directly while developing NutriGraphNet. A revised variant (v3) replaces the HybridDecoder (Bilinear × Dot × MLP ensemble) with a pure L2-normalised dot-product decoder that is rank-optimal by construction, and replaces the dual-channel encoder with a residual/batch-normalised one. Given an identical budget (300 epochs, lr=1e-3, seed 42, identical folds and interaction subsets), the two variants invert across density:
-
-**Table H. NutriGraphNet Decoder Variants vs. Interaction Density (GPU 5-fold CV, HR@10 unless noted)**
-
-| Density | v2 (HybridDecoder) | v3 (RankDot decoder) | Winner |
-|---------|--------------------|----------------------|--------|
-| 10% | **0.738** | 0.645 (−12.6%) | v2 |
-| 30% | **0.755** | 0.700 (−7.3%) | v2 |
-| 100% | 0.729 | **0.751** | v3 |
-| 100% — NDCG@10 | 0.428 | **0.511** (+19.5%) | v3 |
-| 100% — MRR | 0.338 | **0.445** (+31.7%) | v3 |
-| 100% — AUC | 0.862 | **0.872** | v3 |
-
-**Finding H1 — Rank Calibration Helps With Data and Hurts Without It.** The rank-calibrated decoder delivers exactly what it was designed for at full density (+19.5% NDCG@10, +31.7% MRR) and reverses at low density, losing 12.6% HR@10 at 10%. The gap is 18× our measured run-to-run noise floor (≈0.005), so it is not a fluctuation. The interpretation consistent with the rest of this study is capacity: a pure dot-product decoder is a *simpler* function than the Bilinear+MLP ensemble, and simpler models are hungrier — the same ordering EXP-B reports across baselines (scaling ratios: NutriGraphNet 0.99×, LightGCN 1.38×, NGCF 1.54×, MF 2.18×, SGL 4.06×). The decoder capacity that looks like a liability at 100% density is what extracts signal from auxiliary structure at 10%.
-
-This has a practical consequence beyond our model: **architecture ablations reported only at full density can recommend the wrong design for data-scarce deployment.** We report v2 throughout this paper because the sparse regime is the setting of interest; had we selected on full-density NDCG alone, we would have shipped the variant that is 12.6% worse where it matters.
-
-*Caveat.* v3's hyperparameters were tuned at full density and not re-tuned for the sparse regime; v2's were likewise held fixed across densities, so the comparison is matched on budget rather than on per-density optimality. We report the crossover as an observed interaction, not as a proof that no rank-calibrated decoder can win at low density.
-
----
-
-## 8. Limitations and Threats to Validity
+## 11. Limitations and Threats to Validity
 
 We state the boundaries of these results explicitly, including two measurement pitfalls we encountered ourselves.
 
-**8.1 NutriGraphNet does not exploit additional data.** Density-invariance is the headline property and also the ceiling: HR@10 stays at 0.72–0.76 whether given 10% or 100% of interactions, so NGCF overtakes it above roughly 50% density (0.784 vs. 0.729 at 100%). NutriGraphNet is a sparse-data specialist and should not be presented as a general-purpose ranker.
+**11.1 NutriGraphNet does not exploit additional data.** Density-invariance is the headline property and also the ceiling: HR@10 stays at 0.72–0.76 whether given 10% or 100% of interactions, so NGCF overtakes it above roughly 50% density (0.784 vs. 0.729 at 100%). NutriGraphNet is a sparse-data specialist and should not be presented as a general-purpose ranker.
 
-**8.2 Ranking order is weaker than retrieval.** NutriGraphNet's advantage is confined to HR@10 and AUC. Its NDCG@10 trails the topology-blind control at every density (0.508 vs. 0.542 at 10%; 0.411 vs. 0.598 at 100%) and trails MF at full density (0.618). This is a decoder rank-calibration limitation, not a health trade-off — disabling the health objective entirely (λ=0.0) *lowers* NDCG@10 to 0.403 — and the rank-calibrated decoder that fixes it at full density is worse in the sparse regime (§7.3). Applications where the order within the top-10 matters more than its membership are not well served by this model.
+**11.2 Ranking order is weaker than retrieval.** NutriGraphNet's advantage is confined to HR@10 and AUC. Its NDCG@10 trails the topology-blind control at every density (0.508 vs. 0.542 at 10%; 0.411 vs. 0.598 at 100%) and trails MF at full density (0.618). This is a decoder rank-calibration limitation, not a health trade-off — disabling the health objective entirely (λ=0.0) *lowers* NDCG@10 to 0.403 — and the rank-calibrated decoder that fixes it at full density is worse in the sparse regime (§8.4). Applications where the order within the top-10 matters more than its membership are not well served by this model.
 
-**8.3 HealthGain@K is not measurable below full density (measurement pitfall).** Per-food health scores are derived by averaging `healthness` edge attributes per food, so foods left with no surviving `healthness` edge score 0. Because interaction subsampling removes `healthness` edges alongside `eats` edges, the population baseline collapses from 0.6653 at 100% density to 0.1529 at 10%, where 24,205 of 31,458 foods (77%) score 0. HealthGain@10 then reads **+0.503** at 10% density — which would appear to show that health alignment *strengthens* under sparsity, an attractive and entirely false conclusion. The quantity is measuring the tautology that recommended foods are foods with interactions. We therefore report HealthGain only at full density. Any sparsity study of a health-aware recommender that derives item health scores from interaction-coupled edges is exposed to this artifact.
+**11.3 HealthGain@K is not measurable below full density (measurement pitfall).** Per-food health scores are derived by averaging `healthness` edge attributes per food, so foods left with no surviving `healthness` edge score 0. Because interaction subsampling removes `healthness` edges alongside `eats` edges, the population baseline collapses from 0.6653 at 100% density to 0.1529 at 10%, where 24,205 of 31,458 foods (77%) score 0. HealthGain@10 then reads **+0.503** at 10% density — which would appear to show that health alignment *strengthens* under sparsity, an attractive and entirely false conclusion. The quantity is measuring the tautology that recommended foods are foods with interactions. We therefore report HealthGain only at full density. Any sparsity study of a health-aware recommender that derives item health scores from interaction-coupled edges is exposed to this artifact.
 
-**8.4 Run-to-run reproducibility floor (measurement pitfall).** Identical seed, parameters, and density produce ΔHR@10≈0.002, ΔAUC≈0.005, ΔNDCG@10≈0.007 across independent runs (`B_full_100pct` vs. `C_lambda_0.01`), which we attribute to non-deterministic scatter operations in GPU message passing accumulated over 300 epochs. All effects we claim exceed this floor by at least an order of magnitude, but it is the reason we decline to claim an augmentation-ratio effect (EXP-A, Δ=0.008) and treat the nominal λ optimum (λ=0.005 vs. λ=0.01, Δ=0.018) as weakly identified.
+**11.4 Run-to-run reproducibility floor (measurement pitfall).** Identical seed, parameters, and density produce ΔHR@10≈0.002, ΔAUC≈0.005, ΔNDCG@10≈0.007 across independent runs (`B_full_100pct` vs. `C_lambda_0.01`), which we attribute to non-deterministic scatter operations in GPU message passing accumulated over 300 epochs. All effects we claim exceed this floor by at least an order of magnitude, but it is the reason we decline to claim an augmentation-ratio effect (EXP-A, Δ=0.008) and treat the nominal λ optimum (λ=0.005 vs. λ=0.01, Δ=0.018) as weakly identified.
 
-**8.5 An unexplained AUC trend.** NutriGraphNet's AUC decreases monotonically as density increases (0.932→0.860), uniquely among the six models; every baseline increases (NGCF 0.764→0.878). The effect is consistent across all five folds (σ≤0.008) and so is not noise. A plausible explanation is that the auxiliary graph is held at full size while `eats` edges are subsampled, leaving the model an intact structural signal against a smaller positive set, but our experiments do not isolate the cause. We therefore draw no conclusion from the AUC column in the sparsity sweep.
+**11.5 An unexplained AUC trend.** NutriGraphNet's AUC decreases monotonically as density increases (0.932→0.860), uniquely among the six models; every baseline increases (NGCF 0.764→0.878). The effect is consistent across all five folds (σ≤0.008) and so is not noise. A plausible explanation is that the auxiliary graph is held at full size while `eats` edges are subsampled, leaving the model an intact structural signal against a smaller positive set, but our experiments do not isolate the cause. We therefore draw no conclusion from the AUC column in the sparsity sweep.
 
-**8.6 No health-aware baseline.** Our comparisons cover four published collaborative-filtering baselines and a control of our own construction. We do not compare against a published health-aware food recommender, so while we show that *our* health objective is architecturally routed and controllable, we cannot position its health performance relative to prior health-aware systems. This is the most significant gap in the present evaluation.
+**11.6 No health-aware baseline.** Our comparisons cover four published collaborative-filtering baselines and a control of our own construction. We do not compare against a published health-aware food recommender, so while we show that *our* health objective is architecturally routed and controllable, we cannot position its health performance relative to prior health-aware systems. This is the most significant gap in the present evaluation.
 
-**8.7 Single dataset.** All results are on NutriGraph-KR. The sparsity regime we study (0.040%, 12.6 interactions/user) is the paper's subject rather than an incidental property, but we have not shown that the auxiliary-substitution effect transfers to other nutrition graphs, and denser public benchmarks (Food.com is ≈3× denser at ≈25 interactions/user, and carries no user health attributes) would test the boundary rather than replicate the finding.
+**11.7 Single dataset.** All results are on NutriGraph-KR. The sparsity regime we study (0.040%, 12.6 interactions/user) is the paper's subject rather than an incidental property, but we have not shown that the auxiliary-substitution effect transfers to other nutrition graphs, and denser public benchmarks (Food.com is ≈3× denser at ≈25 interactions/user, and carries no user health attributes) would test the boundary rather than replicate the finding.
 
-**8.8 Single seed for the full-parameter λ sweep.** Table C-Full reports seed 42 only; the multi-seed evidence for the λ plateau (Table C) comes from the lightweight configuration. A multi-seed full-parameter replication remains outstanding.
+**11.8 Single seed for the full-parameter λ sweep.** Table C-Full reports seed 42 only; the multi-seed evidence for the λ plateau (Table C) comes from the lightweight configuration. A multi-seed full-parameter replication remains outstanding.
 
 ---
 
-## 9. Conclusion
+## 12. Conclusion
 
 We presented a systematic empirical analysis of GNN-based food recommendation on a large-scale heterogeneous nutrition graph (NutriGraph-KR: 20,820 users, 31,458 foods, density=0.040%), uncovering four key phenomena with root-cause explanations:
 
