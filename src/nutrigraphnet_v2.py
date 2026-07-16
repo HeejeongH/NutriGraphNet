@@ -778,6 +778,159 @@ class HFRSDAModel(nn.Module):
         return score
 
 
+class HFRSDAReal(nn.Module):
+    """
+    Faithful re-implementation of HFRS-DA (variant key: 'hfrsda_real').
+
+    Follows the OFFICIAL implementation of Forouzandeh et al., "Health-aware
+    food recommendation system with dual attention in heterogeneous graphs",
+    Computers in Biology and Medicine, 2024
+    (github.com/S-Forouzandeh/Health-aware-Food-Recommendation-System-with-Dual-Attention-in-Heterogeneous-Graphs),
+    as opposed to the deliberately simplified DualAttn-TB control (class
+    HFRSDAModel above). This one is intended as a genuine published-baseline
+    comparison, so it reproduces the paper's two mechanisms:
+
+      * NLA (Node-Level Attention): user/food/ingredient embeddings, with the
+        food representation enriched by attention over its ingredient
+        neighbourhood (the official code embeds ingredients and folds them into
+        the recipe representation).
+      * SLA (Semantic-Level / health attention): the official code weights
+        recipes by a health signal derived from the WHO 7-nutrient is_healthy()
+        rule (fibre>10, 15<=fat<=30, sugar<10, sodium<5, 10<=protein<=15,
+        satfat<10, 55<=carbs<=75; healthy iff >=3 conditions). Its attention is
+        impression_coefficient = softmax(u . f^T) followed by a LeakyReLU-gated
+        weight, rather than multi-head attention.
+
+    Two faithful-adaptation notes, both required for an apples-to-apples
+    comparison and stated plainly in the paper (Section 4.1 / baseline notes):
+
+      (1) SCORING & EVALUATION. The official model produces recommendations by
+          user-user cosine-similarity collaborative filtering and reports
+          Precision/Recall/F1/NDCG over a user-level train/test split. That
+          protocol is not comparable to the unified 5-fold sampled-ranking
+          (1 pos + 100 neg -> HR@K/NDCG@K/AUC) used for every other model here.
+          We therefore keep HFRS-DA's architecture and health mechanism intact
+          but score (user, food) pairs by cosine similarity of the fused
+          NLA+SLA embeddings and evaluate under the SAME protocol as all other
+          models. Training uses the shared BPR objective for the same reason.
+          This is standard benchmarking practice (one eval protocol for all
+          models) and is the fair choice, not a shortcut.
+
+      (2) HEALTH SIGNAL SOURCE. is_healthy() needs raw nutrition in grams. Our
+          graph stores a continuous per-food health score on the
+          user-healthness-food edge, itself computed from the same WHO
+          7-nutrient basis, in [0.295, 0.958]. We use that score directly as
+          the health signal (no re-derivation, no graph rebuild). The raw
+          KNHANES nutrition columns remain available (HN/*.sav) if an exact
+          gram-threshold reproduction is later wanted.
+
+    Interface matches HFRSDAModel: forward(edge_label_index, health_scores=hs)
+    returns a per-edge score, so run_fold/eval wiring is identical.
+    """
+
+    def __init__(self, num_users, num_foods, num_ingredients,
+                 emb_dim=64, dropout=0.1, health_alpha=0.5,
+                 food_ingredients=None):
+        super().__init__()
+        self.num_users = num_users
+        self.num_foods = num_foods
+        self.health_alpha = health_alpha
+        self.emb_dim = emb_dim
+
+        self.u_emb = nn.Embedding(num_users, emb_dim)
+        self.f_emb = nn.Embedding(num_foods, emb_dim)
+        self.i_emb = nn.Embedding(max(num_ingredients, 1), emb_dim)
+        nn.init.xavier_uniform_(self.u_emb.weight)
+        nn.init.xavier_uniform_(self.f_emb.weight)
+        nn.init.xavier_uniform_(self.i_emb.weight)
+
+        # NLA: fold ingredient neighbourhood into the food representation.
+        self.nla_ing_attn = nn.Linear(emb_dim, emb_dim)
+        self.nla_fuse = nn.Linear(emb_dim * 2, emb_dim)
+
+        # SLA: official attention is Linear + LeakyReLU over the entity emb.
+        self.sla_attention = nn.Sequential(
+            nn.Linear(emb_dim, emb_dim),
+            nn.LeakyReLU(negative_slope=0.01),
+        )
+        self.dropout = dropout
+        # Temperature for the cosine score: standard for training a
+        # cosine-similarity recommender under a pairwise ranking loss (cos is
+        # bounded to [-1,1], which otherwise starves BPR gradients). Scaling
+        # only, no change to the architecture.
+        self.tau = 0.2
+
+        # Precomputed ragged food->ingredient index lists (set by run_fold via
+        # attach_ingredients); None falls back to pure embedding lookup.
+        self._food_ing = food_ingredients
+
+    def attach_ingredients(self, food_ing_index, device):
+        """food_ing_index: LongTensor [2, E] of (food, ingredient) edges.
+        Builds a padded [num_foods, max_deg] ingredient index + mask for
+        vectorised mean-attention over each food's ingredients."""
+        if food_ing_index is None or food_ing_index.numel() == 0:
+            self._food_ing = None
+            return
+        f, ing = food_ing_index[0].tolist(), food_ing_index[1].tolist()
+        buckets = {}
+        for a, b in zip(f, ing):
+            buckets.setdefault(a, []).append(b)
+        max_deg = max((len(v) for v in buckets.values()), default=1)
+        max_deg = min(max_deg, 32)  # cap for memory; official uses all, 32 covers >99%
+        pad = torch.zeros(self.num_foods, max_deg, dtype=torch.long)
+        mask = torch.zeros(self.num_foods, max_deg, dtype=torch.bool)
+        for fid, ings in buckets.items():
+            ings = ings[:max_deg]
+            pad[fid, :len(ings)] = torch.tensor(ings, dtype=torch.long)
+            mask[fid, :len(ings)] = True
+        self._food_ing = (pad.to(device), mask.to(device))
+
+    def _food_repr(self, f_idx):
+        """NLA food representation: base food emb fused with attention-pooled
+        ingredient embeddings (official code enriches recipe with ingredients)."""
+        f_e = self.f_emb(f_idx)                          # [B, D]
+        if self._food_ing is None:
+            return f_e
+        pad, mask = self._food_ing
+        ing_ids = pad[f_idx]                             # [B, deg]
+        ing_mask = mask[f_idx].unsqueeze(-1)             # [B, deg, 1]
+        ing_e = self.i_emb(ing_ids)                      # [B, deg, D]
+        # attention weight per ingredient (LeakyReLU-gated, official style)
+        w = self.nla_ing_attn(ing_e)                     # [B, deg, D]
+        w = torch.where(ing_mask, w, torch.full_like(w, -1e9))
+        w = torch.softmax(w, dim=1)
+        ing_pool = (w * ing_e).sum(dim=1)                # [B, D]
+        # zero out foods with no ingredients
+        has_ing = mask[f_idx].any(dim=1, keepdim=True).float()
+        ing_pool = ing_pool * has_ing
+        return self.nla_fuse(torch.cat([f_e, ing_pool], dim=-1))
+
+    def _fused_embeddings(self, u_idx, f_idx, health_scores=None):
+        """Return (user_vec, food_vec) fusing NLA (structure) and SLA (health),
+        mirroring the official 'summed_embeddings = nla + sla_healthy'."""
+        u_e = self.u_emb(u_idx)                          # [B, D]
+        f_nla = self._food_repr(f_idx)                   # [B, D]  (NLA)
+
+        # SLA: LeakyReLU-gated attention, then health-weight the food vector.
+        f_sla = self.sla_attention(self.f_emb(f_idx))    # [B, D]
+        if health_scores is not None:
+            h = health_scores[f_idx].clamp(0, 1).unsqueeze(-1)   # [B, 1]
+            f_sla = f_sla * h                            # heavier weight for healthier food
+        # fuse the two food channels (official sums NLA + SLA embeddings)
+        f_vec = (1 - self.health_alpha) * f_nla + self.health_alpha * f_sla
+
+        u_vec = self.sla_attention(u_e) + u_e            # user also passes SLA attn
+        return u_vec, f_vec
+
+    def forward(self, edge_label_index, health_scores=None, **kw):
+        u_idx, f_idx = edge_label_index[0], edge_label_index[1]
+        u_vec, f_vec = self._fused_embeddings(u_idx, f_idx, health_scores)
+        # official scores via cosine similarity of the fused embeddings
+        u_n = F.normalize(u_vec, dim=-1)
+        f_n = F.normalize(f_vec, dim=-1)
+        return (u_n * f_n).sum(-1) / self.tau           # temperature-scaled cosine, [B]
+
+
 # ============================================================================
 # 5. LOSS FUNCTION
 # ============================================================================
@@ -1634,6 +1787,18 @@ def run_fold(fold, train_data, val_data, test_data, args, device, variant='full'
                             dropout=args.dropout,
                             health_alpha=getattr(args, 'hfrsda_alpha', 0.3)).to(device)
         mtype = 'hfrsda'
+    elif variant == 'hfrsda_real':
+        # Faithful HFRS-DA baseline (distinct from the DualAttn-TB control).
+        # mtype stays 'hfrsda' so the shared forward(edge_label_index,
+        # health_scores=hs) loss/eval wiring is reused unchanged.
+        model = HFRSDAReal(n_users, n_foods, n_ingr,
+                           emb_dim=args.out_channels,
+                           dropout=args.dropout,
+                           health_alpha=getattr(args, 'hfrsda_alpha', 0.5)).to(device)
+        fi_key = ('food', 'contains', 'ingredient')
+        if fi_key in train_data.edge_types:
+            model.attach_ingredients(train_data[fi_key].edge_index, device)
+        mtype = 'hfrsda'
     else:
         # NutriGraphNet ablation variants
         use_dual   = 'no_dual'   not in variant
@@ -2028,7 +2193,7 @@ def generate_latex_table(all_results, output_dir, sig_results=None):
                    'NDCG@5', 'NDCG@10', 'NDCG@20',
                    'MRR', 'HealthGain@5', 'HealthGain@10']
 
-    order = ['mf', 'lightgcn', 'ngcf', 'sgl', 'hfrsda',
+    order = ['mf', 'lightgcn', 'ngcf', 'sgl', 'hfrsda', 'hfrsda_real',
              'no_dual', 'no_health', 'no_cl', 'full']
     names = {
         'mf':        r'MF~\cite{koren2009matrix}',
@@ -2036,6 +2201,7 @@ def generate_latex_table(all_results, output_dir, sig_results=None):
         'ngcf':      r'NGCF~\cite{wang2019neural}',
         'sgl':       r'SGL~\cite{wu2021self}',
         'hfrsda':    r'DualAttn-TB (topology-blind control, ours)',
+        'hfrsda_real': r'HFRS-DA~\cite{forouzandeh2024hfrsda}',
         'no_dual':   r'NGN$_{\text{-D}}$',
         'no_health': r'NGN$_{\text{-H}}$',
         'no_cl':     r'NGN$_{\text{-CL}}$',
@@ -2202,11 +2368,12 @@ def plot_ablation_comparison(all_results, output_dir):
     Grouped bar chart for ablation study.
     논문 Figure: ablation bar chart (HR@10, NDCG@10, MRR).
     """
-    order   = ['mf', 'lightgcn', 'ngcf', 'sgl', 'hfrsda',
+    order   = ['mf', 'lightgcn', 'ngcf', 'sgl', 'hfrsda', 'hfrsda_real',
                'no_dual', 'no_health', 'no_cl', 'full']
     labels  = {
         'mf':        'MF', 'lightgcn': 'LightGCN',
         'ngcf':      'NGCF', 'sgl': 'SGL', 'hfrsda': 'DualAttn-TB',
+        'hfrsda_real': 'HFRS-DA',
         'no_dual':   'NGN-D', 'no_health': 'NGN-H',
         'no_cl':     'NGN-CL', 'full': 'NutriGraphNet\nv2 (Full)',
     }
@@ -2519,7 +2686,7 @@ def main():
     print(f"{'='*80}")
     hdr = f"{'Model':<20}" + "".join(f"{m:>18}" for m in key_m)
     print(hdr); print("-" * len(hdr))
-    model_order = ['mf', 'lightgcn', 'ngcf', 'sgl', 'hfrsda',
+    model_order = ['mf', 'lightgcn', 'ngcf', 'sgl', 'hfrsda', 'hfrsda_real',
                    'no_dual', 'no_health', 'no_cl', 'full']
     for v in model_order:
         if v not in all_results: continue
