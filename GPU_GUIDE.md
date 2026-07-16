@@ -34,7 +34,7 @@ pip install -r requirements.txt
 ### 기본 모델 비교 (5-fold CV)
 ```bash
 # NutriGraphNet full model — GPU 기본값
-python nutrigraphnet_v2.py \
+python src/nutrigraphnet_v2.py \
     --variants full \
     --n_folds 5 \
     --epochs 300 \
@@ -42,7 +42,7 @@ python nutrigraphnet_v2.py \
     --output_dir results/gpu/full_5fold
 
 # HFRSDA 비교
-python nutrigraphnet_v2.py \
+python src/nutrigraphnet_v2.py \
     --variants hfrsda \
     --n_folds 5 \
     --epochs 300 \
@@ -50,7 +50,7 @@ python nutrigraphnet_v2.py \
     --output_dir results/gpu/hfrsda_5fold
 
 # 모든 모델 동시 실행 (GPU VRAM 16GB+)
-python nutrigraphnet_v2.py \
+python src/nutrigraphnet_v2.py \
     --variants mf,lightgcn,ngcf,sgl,hfrsda,full \
     --n_folds 5 \
     --epochs 300 \
@@ -67,7 +67,7 @@ python nutrigraphnet_v2.py \
 # GPU에서는 전체 파라미터 사용 가능
 for lam in 0.0 0.001 0.005 0.01 0.05 0.1 0.5 1.0; do
     for seed in 42 123 777; do
-        python nutrigraphnet_v2.py \
+        python src/nutrigraphnet_v2.py \
             --variants full \
             --lambda_health $lam \
             --n_folds 5 \
@@ -87,17 +87,17 @@ done
 ### CPU 환경 (sandbox, 메모리 최적화, 1-fold, seed=42)
 ```bash
 # Sandbox에서 실행된 현재 결과 (이미 완료)
-python run_analysis_experiments.py --exp C
+python src/run_analysis_experiments.py --exp C
 # → 메모리 최적화: hidden=64, out=32, layers=1, heads=2, 1-fold
 ```
 
 ### run_analysis_experiments.py로 한 번에 실행
 ```bash
 # EXP-C only
-python run_analysis_experiments.py --exp C
+python src/run_analysis_experiments.py --exp C
 
 # 빠른 검증 (1 fold, 30 epochs)
-python run_analysis_experiments.py --exp C --quick
+python src/run_analysis_experiments.py --exp C --quick
 ```
 
 ---
@@ -106,11 +106,11 @@ python run_analysis_experiments.py --exp C --quick
 
 ```bash
 # 전 모델 (hfrsda 포함), 3-fold, 5개 sparsity
-python run_analysis_experiments.py --exp B
+python src/run_analysis_experiments.py --exp B
 
 # 또는 수동으로
 for ratio in 0.1 0.3 0.5 0.7 1.0; do
-    python nutrigraphnet_v2.py \
+    python src/nutrigraphnet_v2.py \
         --variants mf,lightgcn,ngcf,sgl,hfrsda \
         --interaction_ratio $ratio \
         --n_folds 3 \
@@ -126,11 +126,11 @@ done
 
 ```bash
 # LightGCN / NGCF — num_layers 1~4 (over-smoothing 분석)
-python run_analysis_experiments.py --exp G
+python src/run_analysis_experiments.py --exp G
 
 # 또는 수동으로
 for nl in 1 2 3 4; do
-    python nutrigraphnet_v2.py \
+    python src/nutrigraphnet_v2.py \
         --variants lightgcn,ngcf \
         --num_layers $nl \
         --n_folds 5 \
@@ -146,11 +146,11 @@ done
 
 ```bash
 # 전 모델, dim=16~256
-python run_analysis_experiments.py --exp D
+python src/run_analysis_experiments.py --exp D
 
 # 또는 수동으로
 for d in 16 32 64 128 256; do
-    python nutrigraphnet_v2.py \
+    python src/nutrigraphnet_v2.py \
         --variants mf,lightgcn,ngcf,sgl,hfrsda \
         --out_channels $d \
         --hidden_channels $((d * 2)) \
@@ -167,10 +167,10 @@ done
 
 ```bash
 # 전체 실험 (A+B+C+D+F+G) — GPU 환경에서 수 시간 소요
-python run_analysis_experiments.py --exp all
+python src/run_analysis_experiments.py --exp all
 
 # 결과 요약 출력
-python run_analysis_experiments.py --exp summary
+python src/run_analysis_experiments.py --exp summary
 ```
 
 ---
@@ -198,7 +198,7 @@ Health loss가 실제로 작동함 (NutriGraphNet 버그 수정 후).
 
 ```bash
 # GPU 환경 최적 파라미터 (VRAM 8GB 기준)
-python nutrigraphnet_v2.py \
+python src/nutrigraphnet_v2.py \
     --variants full \
     --lambda_health 0.5 \
     --n_folds 5 \

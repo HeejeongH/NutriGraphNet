@@ -30,13 +30,13 @@ mkdir -p results/gpu
 
 ### 방법 1: 스크립트 자동 실행 (권장)
 ```bash
-python run_analysis_experiments.py --exp A
+python src/run_analysis_experiments.py --exp A
 ```
 
 ### 방법 2: 수동 실행
 ```bash
 for AUG in 0.0 0.1 0.2 0.3 0.4 0.5; do
-    python nutrigraphnet_v2.py \
+    python src/nutrigraphnet_v2.py \
         --variants sgl \
         --sgl_aug $AUG \
         --n_folds 5 \
@@ -71,7 +71,7 @@ results/gpu/A_sgl_aug_0.5/all_results.json
 
 ### 방법 1: 스크립트 자동 실행 (권장)
 ```bash
-python run_analysis_experiments.py --exp D
+python src/run_analysis_experiments.py --exp D
 ```
 
 ### 방법 2: 수동 실행
@@ -79,7 +79,7 @@ python run_analysis_experiments.py --exp D
 MODELS="mf,lightgcn,ngcf,sgl,hfrsda"
 
 for DIM in 16 32 64 128 256; do
-    python nutrigraphnet_v2.py \
+    python src/nutrigraphnet_v2.py \
         --variants $MODELS \
         --out_channels $DIM \
         --hidden_channels $((DIM * 2)) \
@@ -113,7 +113,7 @@ results/gpu/D_dim_256/all_results.json
 
 ### 방법 1: 스크립트 자동 실행 (권장)
 ```bash
-python run_analysis_experiments.py --exp F
+python src/run_analysis_experiments.py --exp F
 ```
 
 ### 방법 2: 수동 실행 (NutriGraphNet ablation만)
@@ -122,36 +122,36 @@ BASE_ARGS="--variants full --n_folds 5 --epochs 300 --patience 30
            --hidden_channels 128 --out_channels 64 --num_layers 3 --heads 4 --seed 42"
 
 # Full graph (베이스라인)
-python nutrigraphnet_v2.py $BASE_ARGS \
+python src/nutrigraphnet_v2.py $BASE_ARGS \
     --output_dir results/gpu/F_ablation_full_graph
 
 # w/o ingredient edges
-python nutrigraphnet_v2.py $BASE_ARGS \
+python src/nutrigraphnet_v2.py $BASE_ARGS \
     --ablate_no_ingredient \
     --output_dir results/gpu/F_ablation_no_ingredient
 
 # w/o time edges
-python nutrigraphnet_v2.py $BASE_ARGS \
+python src/nutrigraphnet_v2.py $BASE_ARGS \
     --ablate_no_time \
     --output_dir results/gpu/F_ablation_no_time
 
 # w/o food-similar edges
-python nutrigraphnet_v2.py $BASE_ARGS \
+python src/nutrigraphnet_v2.py $BASE_ARGS \
     --ablate_no_food_similar \
     --output_dir results/gpu/F_ablation_no_food_similar
 
 # w/o healthness edges
-python nutrigraphnet_v2.py $BASE_ARGS \
+python src/nutrigraphnet_v2.py $BASE_ARGS \
     --ablate_no_healthness \
     --output_dir results/gpu/F_ablation_no_healthness
 
 # w/o ingredient + time
-python nutrigraphnet_v2.py $BASE_ARGS \
+python src/nutrigraphnet_v2.py $BASE_ARGS \
     --ablate_no_ingredient --ablate_no_time \
     --output_dir results/gpu/F_ablation_no_ingredient_time
 
 # w/o all auxiliary (ingredient + time + food_similar)
-python nutrigraphnet_v2.py $BASE_ARGS \
+python src/nutrigraphnet_v2.py $BASE_ARGS \
     --ablate_no_ingredient --ablate_no_time --ablate_no_food_similar \
     --output_dir results/gpu/F_ablation_no_all_auxiliary
 ```
@@ -173,15 +173,15 @@ results/gpu/F_ablation_no_all_auxiliary/all_results.json
 
 ```bash
 # 순차 실행 (총 ~11시간, 하룻밤 돌리기)
-python run_analysis_experiments.py --exp A && \
-python run_analysis_experiments.py --exp D && \
-python run_analysis_experiments.py --exp F
+python src/run_analysis_experiments.py --exp A && \
+python src/run_analysis_experiments.py --exp D && \
+python src/run_analysis_experiments.py --exp F
 
 # 또는 백그라운드 실행 (로그 저장)
 nohup bash -c "
-  python run_analysis_experiments.py --exp A > logs/expA.log 2>&1 && echo 'EXP-A DONE' &&
-  python run_analysis_experiments.py --exp D > logs/expD.log 2>&1 && echo 'EXP-D DONE' &&
-  python run_analysis_experiments.py --exp F > logs/expF.log 2>&1 && echo 'EXP-F DONE'
+  python src/run_analysis_experiments.py --exp A > logs/expA.log 2>&1 && echo 'EXP-A DONE' &&
+  python src/run_analysis_experiments.py --exp D > logs/expD.log 2>&1 && echo 'EXP-D DONE' &&
+  python src/run_analysis_experiments.py --exp F > logs/expF.log 2>&1 && echo 'EXP-F DONE'
 " &
 echo "PID: $!"
 ```
@@ -194,7 +194,7 @@ echo "PID: $!"
 아래 명령으로 SUMMARY 파일을 한 번에 갱신하세요:
 
 ```bash
-python generate_summary_gpu.py results/gpu/
+python src/generate_summary_gpu.py results/gpu/
 ```
 
 생성 파일:
@@ -208,9 +208,9 @@ python generate_summary_gpu.py results/gpu/
 
 ```bash
 # Quick mode: 1-fold, 30 epochs으로 파이프라인 정상 동작 확인
-python run_analysis_experiments.py --exp A --quick
-python run_analysis_experiments.py --exp D --quick
-python run_analysis_experiments.py --exp F --quick
+python src/run_analysis_experiments.py --exp A --quick
+python src/run_analysis_experiments.py --exp D --quick
+python src/run_analysis_experiments.py --exp F --quick
 ```
 
 ---
