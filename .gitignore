@@ -16,16 +16,19 @@ venv/
 env/
 
 # 모델 & 결과
+#
+# WARNING: never re-add a bare `results/` rule here. Git cannot re-include a
+# file whose parent directory is excluded, so the `!results/analysis/` lines
+# that used to sit below it were dead from the day they were written -- all 333
+# result JSONs the paper cites were silently untracked. Exclude the heavy
+# regenerable artifacts by extension instead. The JSONs total ~1.9 MB and are
+# the paper's evidence: they must stay versioned.
 *.pth
+*.pt
 *.h5
-#*.pkl
-#*.pickle
 checkpoints/
-results/
-!results/analysis/
-!results/analysis/**
-results/**/*.pt
-results/**/*.pth
+results/**/*.pdf
+results/**/*.png
 logs/
 *.log
 

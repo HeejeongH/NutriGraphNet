@@ -1,0 +1,13 @@
+\begin{table*}[t]
+\centering
+\caption{Performance Comparison on NutriGraphNet Benchmark (mean $\pm$ std over 5-fold CV, Sampled-100 evaluation protocol). \textbf{Bold}: best. \underline{Underline}: second-best. $^*$/$^{**}$: Wilcoxon $p<0.05/0.01$ vs full model.}
+\label{tab:main_results}
+\resizebox{\textwidth}{!}{%
+\begin{tabular}{lrrrrrrrrrrrr}
+\toprule
+Model & auc & ap & f1 & HR@5 & HR@10 & HR@20 & NDCG@5 & NDCG@10 & NDCG@20 & MRR & HGain@5 & HGain@10 \\
+\midrule
+\textbf{NutriGraphNet v2} & \textbf{0.8803$\pm$0.0071} & \textbf{0.8945$\pm$0.0071} & \textbf{0.7281$\pm$0.0035} & \textbf{0.6220$\pm$0.0112} & \textbf{0.7420$\pm$0.0061} & \textbf{0.8228$\pm$0.0168} & \textbf{0.4653$\pm$0.0294} & \textbf{0.5042$\pm$0.0269} & \textbf{0.5250$\pm$0.0269} & \textbf{0.4394$\pm$0.0377} & \textbf{0.2106$\pm$0.0034} & \textbf{0.2158$\pm$0.0022} \\
+\bottomrule
+\end{tabular}}
+\end{table*}

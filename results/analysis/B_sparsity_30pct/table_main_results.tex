@@ -1,0 +1,16 @@
+\begin{table*}[t]
+\centering
+\caption{Performance Comparison on NutriGraphNet Benchmark (mean $\pm$ std over 5-fold CV, Sampled-100 evaluation protocol). \textbf{Bold}: best. \underline{Underline}: second-best. $^*$/$^{**}$: Wilcoxon $p<0.05/0.01$ vs full model.}
+\label{tab:main_results}
+\resizebox{\textwidth}{!}{%
+\begin{tabular}{lrrrrrrrrrrrr}
+\toprule
+Model & auc & ap & f1 & HR@5 & HR@10 & HR@20 & NDCG@5 & NDCG@10 & NDCG@20 & MRR & HGain@5 & HGain@10 \\
+\midrule
+MF~\cite{koren2009matrix} & 0.5428$\pm$0.0078 & 0.5363$\pm$0.0081 & 0.5443$\pm$0.0098 & 0.5440$\pm$0.0402 & 0.6213$\pm$0.0327 & 0.6873$\pm$0.0276 & 0.4429$\pm$0.0413 & 0.4682$\pm$0.0392 & 0.4851$\pm$0.0379 & \underline{0.4303$\pm$0.0403} & -- & -- \\
+LightGCN~\cite{he2020lightgcn} & \underline{0.8329$\pm$0.0011} & \underline{0.8558$\pm$0.0019} & \textbf{0.7536$\pm$0.0030} & \underline{0.5987$\pm$0.0050} & \textbf{0.6940$\pm$0.0033} & \textbf{0.7567$\pm$0.0084} & \textbf{0.4567$\pm$0.0039} & \textbf{0.4880$\pm$0.0031} & \textbf{0.5037$\pm$0.0019} & \textbf{0.4314$\pm$0.0047} & -- & -- \\
+NGCF~\cite{wang2019neural} & \textbf{0.8357$\pm$0.0058} & \textbf{0.8589$\pm$0.0045} & \underline{0.7053$\pm$0.0454} & \textbf{0.6080$\pm$0.0331} & \underline{0.6873$\pm$0.0186} & \underline{0.7540$\pm$0.0302} & \underline{0.4463$\pm$0.0441} & \underline{0.4721$\pm$0.0393} & \underline{0.4891$\pm$0.0424} & 0.4135$\pm$0.0458 & -- & -- \\
+SGL~\cite{wu2021self} & 0.5978$\pm$0.0064 & 0.5967$\pm$0.0079 & 0.5742$\pm$0.0048 & 0.1273$\pm$0.0120 & 0.2120$\pm$0.0016 & 0.3300$\pm$0.0043 & 0.0835$\pm$0.0083 & 0.1107$\pm$0.0046 & 0.1402$\pm$0.0054 & 0.1020$\pm$0.0056 & -- & -- \\
+\bottomrule
+\end{tabular}}
+\end{table*}
