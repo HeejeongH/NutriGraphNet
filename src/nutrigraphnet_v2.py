@@ -334,6 +334,41 @@ class HybridDecoder(nn.Module):
         return score.squeeze(-1)
 
 
+class CosineDecoder(nn.Module):
+    """Rank-optimal decoder: temperature-scaled cosine similarity.
+
+    score = <u_hat, f_hat> / tau, with u_hat, f_hat L2-normalised. Unlike the
+    HybridDecoder's Bilinear+MLP ensemble, a pure normalised dot product is
+    monotone in the angle between embeddings, so it preserves the rank order
+    the encoder induces instead of re-learning an absolute score (the failure
+    mode behind v2's low NDCG/MRR; see paper section 8.4). This is what v3's
+    RankDotDecoder and the HFRS-DA baseline both use. Kept as a swappable
+    decoder so v2's proven DualChannelEncoder can be evaluated with it while
+    changing nothing else -- the encoder/decoder decoupling diagnostic.
+    """
+
+    def __init__(self, emb_dim: int, tau: float = 0.15, health_gate: bool = False):
+        super().__init__()
+        self.tau = tau
+        self.health_gate = health_gate
+        if health_gate:
+            # Direct health-signal injection into the food representation,
+            # the mechanism behind HFRS-DA's SLA advantage: modulate the food
+            # embedding by its health score before scoring, so the model gets
+            # the raw signal directly IN ADDITION to the health gradient the
+            # encoder already routes. w is learned (init 0 -> no-op at start).
+            self.health_w = nn.Parameter(torch.zeros(1))
+
+    def forward(self, z_dict, edge_label_index, health_scores=None):
+        u = F.normalize(z_dict['user'][edge_label_index[0]], dim=-1)
+        f = z_dict['food'][edge_label_index[1]]
+        if self.health_gate and health_scores is not None:
+            h = health_scores[edge_label_index[1]].clamp(0, 1).unsqueeze(-1)  # [E,1]
+            f = f * (1.0 + self.health_w * h)
+        f = F.normalize(f, dim=-1)
+        return (u * f).sum(dim=-1) / self.tau
+
+
 # ============================================================================
 # 3. COMPLETE MODEL
 # ============================================================================
@@ -355,6 +390,7 @@ class NutriGraphNetV2(nn.Module):
         heads: int = 4,
         drop_edge_p: float = 0.1,
         num_layers: int = 3,
+        decoder_type: str = 'hybrid',
     ):
         super().__init__()
 
@@ -368,7 +404,13 @@ class NutriGraphNetV2(nn.Module):
             num_layers=num_layers,
         )
 
-        self.decoder = HybridDecoder(emb_dim=out_channels, dropout=dropout)
+        self.decoder_type = decoder_type
+        if decoder_type in ('cosine', 'health_cosine'):
+            self.decoder = CosineDecoder(
+                emb_dim=out_channels,
+                health_gate=(decoder_type == 'health_cosine'))
+        else:
+            self.decoder = HybridDecoder(emb_dim=out_channels, dropout=dropout)
 
         # Health bias head: scalar adjustment based on food health score
         self.health_bias = nn.Sequential(
@@ -389,9 +431,14 @@ class NutriGraphNetV2(nn.Module):
             z_dict = self.encoder(x_dict, edge_index_dict)
             proj = None
 
-        scores = self.decoder(z_dict, edge_label_index)
+        if self.decoder_type in ('cosine', 'health_cosine'):
+            scores = self.decoder(z_dict, edge_label_index, health_scores=health_scores)
+        else:
+            scores = self.decoder(z_dict, edge_label_index)
 
-        if health_scores is not None:
+        # The scalar health-bias head only applies to the HybridDecoder path;
+        # the cosine paths fold the health signal in via the decoder's gate.
+        if health_scores is not None and self.decoder_type == 'hybrid':
             f_idx = edge_label_index[1]
             hs = health_scores[f_idx].unsqueeze(-1)
             bias = self.health_bias(hs).squeeze(-1)
@@ -1809,6 +1856,17 @@ def run_fold(fold, train_data, val_data, test_data, args, device, variant='full'
         drop_ep = args.drop_edge_p if use_cl else 0.0
         lh      = args.lambda_health if use_health else 0.0
         lcl     = args.lambda_cl if use_cl else 0.0
+        # Decoder swap by variant suffix, DualChannelEncoder unchanged:
+        #   *_cos   -> rank-optimal CosineDecoder (decoder-only diagnostic)
+        #   *_hcos  -> CosineDecoder + direct health-score gate (SOTA candidate:
+        #              adds HFRS-DA's direct-health-signal advantage on top of
+        #              NutriGraphNet's learned health-gradient routing)
+        if variant.endswith('_hcos'):
+            dec_type = 'health_cosine'
+        elif variant.endswith('_cos'):
+            dec_type = 'cosine'
+        else:
+            dec_type = 'hybrid'
 
         model = NutriGraphNetV2(
             hidden_channels=args.hidden_channels,
@@ -1818,6 +1876,7 @@ def run_fold(fold, train_data, val_data, test_data, args, device, variant='full'
             heads=args.heads,
             drop_edge_p=drop_ep,
             num_layers=nlayers,
+            decoder_type=dec_type,
         ).to(device)
         mtype = 'gnn'
 
