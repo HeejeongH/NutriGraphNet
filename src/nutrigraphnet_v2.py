@@ -394,6 +394,9 @@ class NutriGraphNetV2(nn.Module):
         drop_edge_p: float = 0.1,
         num_layers: int = 3,
         decoder_type: str = 'hybrid',
+        content_anchor: bool = False,
+        food_feat_dim: int = 17,
+        n_ingredients: int = 1,
     ):
         super().__init__()
 
@@ -415,10 +418,62 @@ class NutriGraphNetV2(nn.Module):
         else:
             self.decoder = HybridDecoder(emb_dim=out_channels, dropout=dropout)
 
+        # ── Content-anchor branch (v4) ───────────────────────────────────────
+        # Diagnostic finding: the collaborative encoder squeezes food embeddings
+        # into ~11/64 effective dims (vs HFRS-DA's ~20), diluting food identity
+        # and hurting fine ranking (NDCG). This branch builds a food vector from
+        # the food's OWN content -- its nutrition features + an attention pool of
+        # its ingredient embeddings -- which message passing cannot wash out, and
+        # residual-fuses it into the encoder's food output. Identity-preserving
+        # by construction, the property every high-NDCG baseline shares.
+        self.content_anchor = content_anchor
+        if content_anchor:
+            self.ci_emb = nn.Embedding(max(n_ingredients, 1), out_channels)
+            nn.init.xavier_uniform_(self.ci_emb.weight)
+            self.food_feat_proj = nn.Linear(food_feat_dim, out_channels)
+            self.ing_attn = nn.Linear(out_channels, out_channels)
+            self.content_fuse = nn.Sequential(
+                nn.Linear(out_channels * 2, out_channels), nn.GELU(),
+                nn.Linear(out_channels, out_channels),
+            )
+            self.content_gamma = nn.Parameter(torch.tensor(0.5))
+            self._food_ing = None      # set by attach_content()
+
         # Health bias head: scalar adjustment based on food health score
         self.health_bias = nn.Sequential(
             nn.Linear(1, 8), nn.GELU(), nn.Linear(8, 1)
         )
+
+    def attach_content(self, food_ing_index, num_foods, device):
+        """Precompute padded per-food ingredient lists for the content branch."""
+        if not self.content_anchor or food_ing_index is None:
+            return
+        f, ing = food_ing_index[0].tolist(), food_ing_index[1].tolist()
+        buckets = {}
+        for a, b in zip(f, ing):
+            buckets.setdefault(a, []).append(b)
+        max_deg = min(max((len(v) for v in buckets.values()), default=1), 32)
+        pad = torch.zeros(num_foods, max_deg, dtype=torch.long)
+        mask = torch.zeros(num_foods, max_deg, dtype=torch.bool)
+        for fid, ings in buckets.items():
+            ings = ings[:max_deg]
+            pad[fid, :len(ings)] = torch.tensor(ings, dtype=torch.long)
+            mask[fid, :len(ings)] = True
+        self._food_ing = (pad.to(device), mask.to(device))
+
+    def _content_food(self, food_x):
+        """Identity-preserving food vector from its own nutrition + ingredients."""
+        c_feat = self.food_feat_proj(food_x)                     # [F, D]
+        if self._food_ing is not None:
+            pad, mask = self._food_ing
+            ing_e = self.ci_emb(pad)                             # [F, deg, D]
+            w = self.ing_attn(ing_e)
+            w = w.masked_fill(~mask.unsqueeze(-1), -1e9)
+            w = torch.softmax(w, dim=1)
+            ing_pool = (w * ing_e).sum(1) * mask.any(1, keepdim=True).float()
+        else:
+            ing_pool = torch.zeros_like(c_feat)
+        return self.content_fuse(torch.cat([c_feat, ing_pool], dim=-1))
 
     def forward(
         self,
@@ -433,6 +488,13 @@ class NutriGraphNetV2(nn.Module):
         else:
             z_dict = self.encoder(x_dict, edge_index_dict)
             proj = None
+
+        # v4 content-anchor: residual-fuse each food's identity vector so the
+        # collaborative encoder cannot wash out food-discriminative dimensions.
+        if self.content_anchor:
+            c_food = self._content_food(x_dict['food'])
+            z_dict = dict(z_dict)
+            z_dict['food'] = z_dict['food'] + self.content_gamma * c_food
 
         if self.decoder_type in ('cosine', 'health_cosine'):
             scores = self.decoder(z_dict, edge_label_index, health_scores=health_scores)
@@ -1871,6 +1933,8 @@ def run_fold(fold, train_data, val_data, test_data, args, device, variant='full'
         else:
             dec_type = 'hybrid'
 
+        # '_ca' anywhere in the variant enables the v4 content-anchor branch.
+        use_ca = '_ca' in variant
         model = NutriGraphNetV2(
             hidden_channels=args.hidden_channels,
             out_channels=args.out_channels,
@@ -1880,7 +1944,14 @@ def run_fold(fold, train_data, val_data, test_data, args, device, variant='full'
             drop_edge_p=drop_ep,
             num_layers=nlayers,
             decoder_type=dec_type,
+            content_anchor=use_ca,
+            food_feat_dim=train_data['food'].x.shape[1],
+            n_ingredients=n_ingr,
         ).to(device)
+        if use_ca:
+            fik = ('food', 'contains', 'ingredient')
+            if fik in train_data.edge_types:
+                model.attach_content(train_data[fik].edge_index, n_foods, device)
         mtype = 'gnn'
 
     # Lazy init FIRST (before counting params)
