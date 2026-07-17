@@ -352,19 +352,22 @@ class CosineDecoder(nn.Module):
         self.tau = tau
         self.health_gate = health_gate
         if health_gate:
-            # Direct health-signal injection into the food representation,
-            # the mechanism behind HFRS-DA's SLA advantage: modulate the food
-            # embedding by its health score before scoring, so the model gets
-            # the raw signal directly IN ADDITION to the health gradient the
-            # encoder already routes. w is learned (init 0 -> no-op at start).
-            self.health_w = nn.Parameter(torch.zeros(1))
+            # Proper health fusion (replacing the failed multiplicative gate):
+            # concat the food embedding with its health score and project back,
+            # the way HFRS-DA folds its health signal into the food
+            # representation. A residual keeps it a no-op-friendly start.
+            self.health_fuse = nn.Sequential(
+                nn.Linear(emb_dim + 1, emb_dim),
+                nn.GELU(),
+                nn.Linear(emb_dim, emb_dim),
+            )
 
     def forward(self, z_dict, edge_label_index, health_scores=None):
         u = F.normalize(z_dict['user'][edge_label_index[0]], dim=-1)
         f = z_dict['food'][edge_label_index[1]]
         if self.health_gate and health_scores is not None:
             h = health_scores[edge_label_index[1]].clamp(0, 1).unsqueeze(-1)  # [E,1]
-            f = f * (1.0 + self.health_w * h)
+            f = f + self.health_fuse(torch.cat([f, h], dim=-1))              # residual fuse
         f = F.normalize(f, dim=-1)
         return (u * f).sum(dim=-1) / self.tau
 
