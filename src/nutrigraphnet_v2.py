@@ -475,13 +475,15 @@ class NutriGraphNetV2(nn.Module):
             ing_pool = torch.zeros_like(c_feat)
         return self.content_fuse(torch.cat([c_feat, ing_pool], dim=-1))
 
-    def forward(
-        self,
-        x_dict, edge_index_dict, edge_label_index,
-        health_scores=None,
-        return_projections=False,
-        return_embeddings=False,
-    ):
+    def encode(self, x_dict, edge_index_dict, return_projections=False):
+        """Encoder forward + content-anchor fusion.
+
+        Single source of truth for building z_dict. forward() and eval-time
+        callers (evaluate_model) both route through this -- previously
+        content-anchor was trained in here but evaluate_model called
+        self.encoder directly, so the branch it optimised was never the one
+        eval metrics measured (bug found 2026-08-10, see Finding H2 caveat).
+        """
         if return_projections:
             z_dict, proj = self.encoder(x_dict, edge_index_dict,
                                         return_projections=True)
@@ -496,6 +498,14 @@ class NutriGraphNetV2(nn.Module):
             z_dict = dict(z_dict)
             z_dict['food'] = z_dict['food'] + self.content_gamma * c_food
 
+        if return_projections:
+            return z_dict, proj
+        return z_dict
+
+    def score(self, z_dict, edge_label_index, health_scores=None):
+        """Decoder forward + health-bias adjustment. Mirrors encode(): the
+        single source of truth for scoring, so eval-time metrics see exactly
+        the function training optimised."""
         if self.decoder_type in ('cosine', 'health_cosine'):
             scores = self.decoder(z_dict, edge_label_index, health_scores=health_scores)
         else:
@@ -508,6 +518,24 @@ class NutriGraphNetV2(nn.Module):
             hs = health_scores[f_idx].unsqueeze(-1)
             bias = self.health_bias(hs).squeeze(-1)
             scores = scores + 0.05 * bias
+
+        return scores
+
+    def forward(
+        self,
+        x_dict, edge_index_dict, edge_label_index,
+        health_scores=None,
+        return_projections=False,
+        return_embeddings=False,
+    ):
+        if return_projections:
+            z_dict, proj = self.encode(x_dict, edge_index_dict,
+                                       return_projections=True)
+        else:
+            z_dict = self.encode(x_dict, edge_index_dict)
+            proj = None
+
+        scores = self.score(z_dict, edge_label_index, health_scores=health_scores)
 
         if return_projections:
             return scores, proj
@@ -1587,14 +1615,16 @@ def evaluate_model(model, data, criterion, device, compute_rank=False):
 
     hs = _get_food_health(data, device)
 
-    # Encode once
-    z_dict = model.encoder(x_dict, ei_dict)
+    # Encode once -- FIX (2026-08-10): was model.encoder(...), which skipped
+    # NutriGraphNetV2's content-anchor fusion (only wired inside encode()/
+    # forward()). encode() is the same call model training uses.
+    z_dict = model.encode(x_dict, ei_dict)
 
     # Sample pairs for loss computation
     n_sample = min(pos_ei.shape[1], 4096)
     idx = torch.randperm(pos_ei.shape[1])[:n_sample]
-    ps = model.decoder(z_dict, pos_ei[:, idx])
-    ns = model.decoder(z_dict, neg_ei[:, idx])
+    ps = model.score(z_dict, pos_ei[:, idx])
+    ns = model.score(z_dict, neg_ei[:, idx])
 
     ph = hs[pos_ei[1][idx]] if hs is not None else None
     nh = hs[neg_ei[1][idx]] if hs is not None else None
@@ -1605,13 +1635,13 @@ def evaluate_model(model, data, criterion, device, compute_rank=False):
     n_cls = min(eil.shape[1], 8192)
     idx2 = torch.randperm(eil.shape[1])[:n_cls]
     s_eil = eil[:, idx2]; s_el = el[idx2]
-    s_scores = model.decoder(z_dict, s_eil)
+    s_scores = model.score(z_dict, s_eil)
     proba = torch.sigmoid(s_scores).cpu().numpy()
     cm = classification_metrics(proba, s_el.cpu().numpy())
 
     out = {**ld, **cm}
     if compute_rank:
-        rm = ranking_metrics_from_z(z_dict, model.decoder, data, device, hs)
+        rm = ranking_metrics_from_z(z_dict, model.score, data, device, hs)
         out.update(rm)
 
     del z_dict

@@ -28,13 +28,13 @@ Our findings indicate that in data-scarce nutrition domains, auxiliary relationa
 
 ## 1. Introduction
 
-Food recommendation systems have emerged as a critical tool for promoting healthy dietary behavior in digitally-mediated food environments [CITE Forouzandeh 2024, Song 2022]. Unlike conventional item recommendation (movies, products), food recommendation presents a unique combination of challenges: 
+Food recommendation systems have emerged as a critical tool for promoting healthy dietary behavior in digitally-mediated food environments [Forouzandeh et al., 2024; Song et al., 2022]. Unlike conventional item recommendation (movies, products), food recommendation presents a unique combination of challenges: 
 (i) **compositional item structure** — each food is defined by its ingredients and nutritional profile rather than categorical attributes;  
 (ii) **health constraints** — recommendations must satisfy personalized dietary requirements beyond mere preference;  
 (iii) **temporal and cultural patterns** — eating behaviors are time-of-day and culturally conditioned.
 
-Graph neural networks have been widely adopted for recommendation, with models such as LightGCN [CITE He 2020], NGCF [CITE Wang 2019], and SGL [CITE Wu 2021] achieving state-of-the-art performance on e-commerce and movie datasets. 
-Several works have extended these to food recommendation [CITE HFRS-DA 2024, FRMADHG 2025, SCHGN 2022], yet these methods are developed and validated on benchmarks far denser than the data that health-aware recommendation actually has to serve.
+Graph neural networks have been widely adopted for recommendation, with models such as LightGCN [He et al., 2020], NGCF [Wang et al., 2019b], and SGL [Wu et al., 2021] achieving state-of-the-art performance on e-commerce and movie datasets. 
+Several works have extended these to food recommendation [Forouzandeh et al., 2024; Alkhrijah et al., 2025; Song et al., 2022], yet these methods are developed and validated on benchmarks far denser than the data that health-aware recommendation actually has to serve.
 
 This gap matters because of an asymmetry specific to the nutrition domain. Interaction data is scarce and expensive: a national dietary survey records roughly a dozen eating events per participant (mean 12.6, density 0.040% — about ten times sparser than MovieLens-1M), and collecting more requires re-running the survey. But **auxiliary structure is abundant and nearly free**: a food's ingredient composition is deterministic and already known, nutritional similarity between foods is computable, and meal timing is recorded alongside every interaction. Where collaborative filtering has almost nothing to work with, the heterogeneous graph is fully populated.
 
@@ -60,15 +60,15 @@ This suggests a hypothesis that inverts the usual framing. Rather than asking ho
 
 The landscape of GNN-based recommendation has been shaped by three successive paradigms:
 
-**Propagation-based models.** LightGCN [He et al., 2020] simplified NGCF by removing feature transformation and non-linearities, relying purely on linear propagation of embeddings along user-item edges. NGCF [Wang et al., 2019] introduced explicit interaction modeling via element-wise product in message passing, capturing second-order user-item co-occurrence.
+**Propagation-based models.** LightGCN [He et al., 2020] simplified NGCF by removing feature transformation and non-linearities, relying purely on linear propagation of embeddings along user-item edges. NGCF [Wang et al., 2019b] introduced explicit interaction modeling via element-wise product in message passing, capturing second-order user-item co-occurrence.
 
 **Self-supervised augmentation.** SGL [Wu et al., 2021] introduced contrastive learning to recommendation by generating augmented graph views through edge dropout, node dropout, and random walk. SimGCL [Yu et al., 2022] and XSimGCL [Yu et al., 2023] later showed that uniform noise augmentation outperforms structural dropout in many settings — a finding partially explained by our results.
 
-**Heterogeneous graph models.** HAN [Wang et al., 2019], HeCo [Wang et al., 2021], and RGCN [Schlichtkrull et al., 2018] handle multi-type nodes and edges via meta-path or relation-specific convolutions. HGNN+ [Gao et al., 2022] extended this to hypergraph settings.
+**Heterogeneous graph models.** HAN [Wang et al., 2019a], HeCo [Wang et al., 2021], and RGCN [Schlichtkrull et al., 2018] handle multi-type nodes and edges via meta-path or relation-specific convolutions. HGNN+ [Gao et al., 2022b] extended this to hypergraph settings.
 
 ### 2.2 Food Recommendation
 
-**Graph-based approaches.** FGCN [Gao et al., 2022] first applied GCN to model ingredient-food-user tripartite relationships. SCHGN [Song et al., 2022] integrated calorie awareness via self-supervised heterogeneous graph learning. RecipeRec [Tian et al., 2022] incorporated diverse relational signals via heterogeneous graph learning.
+**Graph-based approaches.** FGCN [Gao et al., 2022a] first applied GCN to model ingredient-food-user tripartite relationships. SCHGN [Song et al., 2022] integrated calorie awareness via self-supervised heterogeneous graph learning. RecipeRec [Tian et al., 2022] incorporated diverse relational signals via heterogeneous graph learning.
 
 **Health-aware approaches.** HFRS-DA [Forouzandeh et al., 2024] introduced dual attention over heterogeneous health graphs, achieving strong AUC on the Allrecipes dataset. MOPI-HFRS [2024] extended this with multi-objective personalized health optimization. The most recent FRMADHG [2025] proposed dynamic hypergraph learning with tripartite user-food-ingredient relationships, achieving state-of-the-art on Food.com and Allrecipes benchmarks.
 
@@ -664,17 +664,22 @@ We presented a systematic empirical analysis of GNN-based food recommendation on
 
 ## References
 
-*(To be completed — key papers)*
-- Koren et al. (2009). Matrix Factorization Techniques for Recommender Systems. IEEE Computer.
-- He et al. (2020). LightGCN: Simplifying and Powering Graph Convolution Network for Recommendation. SIGIR.
-- Wang et al. (2019). Neural Graph Collaborative Filtering. SIGIR.
-- Wu et al. (2021). Self-supervised Graph Learning for Recommendation. SIGIR.
-- Forouzandeh et al. (2024). HFRS-DA. Computers in Biology and Medicine.
-- Forouzandeh et al. (2025). FRMADHG. Scientific Reports.
-- Song et al. (2022). SCHGN. ACM TOMM.
-- Gao et al. (2022). FGCN. Information Sciences.
-- Yu et al. (2022). Are Graph Augmentations Necessary? SimGCL. SIGIR.
-- Yu et al. (2023). XSimGCL. IEEE TKDE.
+- Alkhrijah, Y., Talib, A. N., Sawaran Singh, N. S., & Hussein, A. A. (2025). Adaptive dynamic hypergraph learning for ingredient-aware food recommendation (FRMADHG). *Scientific Reports*, 15, Article 30496.
+- Forouzandeh, S., Rostami, M., Berahmand, K., & Sheikhpour, R. (2024). Health-aware food recommendation system with dual attention in heterogeneous graphs (HFRS-DA). *Computers in Biology and Medicine*, 169, 107882.
+- Gao, X., Feng, F., Huang, H., Mao, X.-L., Lan, T., & Chi, Z. (2022a). Food recommendation with graph convolutional network (FGCN). *Information Sciences*, 584, 170–183.
+- Gao, Y., Feng, Y., Ji, S., & Ji, R. (2022b). HGNN+: General hypergraph neural networks. *IEEE Transactions on Pattern Analysis and Machine Intelligence*, 45(3), 3181–3199.
+- He, X., Deng, K., Wang, X., Li, Y., Zhang, Y., & Wang, M. (2020). LightGCN: Simplifying and powering graph convolution network for recommendation. *Proceedings of SIGIR 2020*, 639–648.
+- Koren, Y., Bell, R., & Volinsky, C. (2009). Matrix factorization techniques for recommender systems. *IEEE Computer*, 42(8), 30–37.
+- Schlichtkrull, M., Kipf, T. N., Bloem, P., van den Berg, R., Titov, I., & Welling, M. (2018). Modeling relational data with graph convolutional networks. *Proceedings of ESWC 2018*, 593–607.
+- Song, Y., Yang, X., & Xu, C. (2022). Self-supervised calorie-aware heterogeneous graph networks for food recommendation (SCHGN). *ACM Transactions on Multimedia Computing, Communications, and Applications*, 19(1s), Article 27. (Formal ACM issue dated January 2023.)
+- Tian, Y., Zhang, C., Guo, Z., Huang, C., Metoyer, R., & Chawla, N. V. (2022). RecipeRec: A heterogeneous graph learning model for recipe recommendation. *Proceedings of IJCAI 2022*, 3466–3472.
+- Wang, X., Ji, H., Shi, C., Wang, B., Cui, P., Yu, P. S., & Ye, Y. (2019a). Heterogeneous graph attention network (HAN). *Proceedings of WWW 2019*, 2022–2032.
+- Wang, X., He, X., Wang, M., Feng, F., & Chua, T.-S. (2019b). Neural graph collaborative filtering (NGCF). *Proceedings of SIGIR 2019*, 165–174.
+- Wang, X., Liu, N., Han, H., & Shi, C. (2021). Self-supervised heterogeneous graph neural network with co-contrastive learning (HeCo). *Proceedings of KDD 2021*, 1726–1736.
+- Wu, J., Wang, X., Feng, F., He, X., Chen, L., Lian, J., & Xie, X. (2021). Self-supervised graph learning for recommendation (SGL). *Proceedings of SIGIR 2021*, 726–735.
+- Yu, J., Yin, H., Xia, X., Chen, T., Cui, L., & Nguyen, Q. V. H. (2022). Are graph augmentations necessary? Simple graph contrastive learning for recommendation (SimGCL). *Proceedings of SIGIR 2022*.
+- Yu, J., Xia, X., Chen, T., Cui, L., Hung, N. Q. V., & Yin, H. (2023). XSimGCL: Towards extremely simple graph contrastive learning for recommendation. *IEEE Transactions on Knowledge and Data Engineering*.
+- Zhang, Z., Wang, Z., Ma, T., Taneja, V. S., Nelson, S., Le, N. H. L., Murugesan, K., Ju, M., Chawla, N. V., Zhang, C., & Ye, Y. (2024). MOPI-HFRS: A multi-objective personalized health-aware food recommendation system with LLM-enhanced interpretation. *arXiv:2412.08847* (Proceedings of KDD 2025).
 
 ---
 *New in v1.3 (2026-07-16): EXP-B "NutriGraphNet" 열 오표기 수정 — 실측 데이터로 교체.*  
@@ -710,4 +715,5 @@ We presented a systematic empirical analysis of GNN-based food recommendation on
 *New in v0.6 (2026-07-13): GPU 5-fold 결과 전면 반영.*  
 *EXP-B: hfrsda(NutriGraphNet) 열 추가 → NutriGraphNet이 10%–70% 전 밀도에서 최고 성능.*  
 *EXP-C: Table C GPU 5-fold로 교체 → λ_optimal=0.005 (CPU 1-fold λ=0.5에서 변경).*  
-*Pending: References [CITE] 7개 채우기; Figure 1/2/4/6 생성; 저자명 placeholder 채우기*
+*Pending: Figure 1/2/4/6 생성; 저자명 placeholder 채우기*
+*References 완료 (2026-07-30): 16개 문헌 전수 실제 논문과 대조 검증 후 채움. 오류 정정 — 기존 초안이 FRMADHG를 Forouzandeh et al.로 오귀속(실제 저자: Alkhrijah, Talib, Sawaran Singh, Hussein, Scientific Reports 2025); Wang 2019(HAN vs NGCF)·Gao 2022(FGCN vs HGNN+) 저자-연도 중복을 2019a/b, 2022a/b로 본문·References 동시 구분. MOPI-HFRS(Zhang et al., 2024) 신규 추가.*
